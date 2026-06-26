@@ -16,6 +16,7 @@
     persp:false, quad:null, // modo perspetiva: 4 cantos livres [TL,TR,BR,BL]
     mask:'rect', maskRadius:0, finished:null,
     finish:'none',          // acabamento: none | acrylic | lightbox
+    spill:0, shadow:0, shadowAngle:135, reflect:0,  // V5 realismo: derrame, sombra, reflexo
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null,
@@ -135,6 +136,10 @@
   window.mockSetMask=function(shape){ MK.mask=shape; buildMasked(); $('mkRadiusRow').style.display=shapeHasCorners()?'':'none'; renderMock(); };
   window.mockSetRadius=function(v){ MK.maskRadius=+v; $('mkRadiusV').textContent=Math.round(v); buildMasked(); renderMock(); };
   window.mockSetFinish=function(v){ MK.finish=v; buildFinished(); renderMock(); };
+  window.mockSetSpill=function(v){ MK.spill=+v; $('mkSpillV').textContent=Math.round(v); renderMock(); };
+  window.mockSetShadow=function(v){ MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
+  window.mockSetShadowAngle=function(v){ MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
+  window.mockSetReflect=function(v){ MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
   window.mockSetOrient=function(v){ MK.orient=v; };
   window.mockSetSize=function(v){ MK.size=v; $('mkCustomRow').style.display=(v==='custom')?'':'none'; };
   window.mockSetCustom=function(which,v){ if(which==='w')MK.customW=+v; else MK.customH=+v; };
@@ -246,26 +251,57 @@
   }
 
   // ── render ────────────────────────────────────────────────────────────────────
-  function paintDesign(ctx2, scaleRatio){
-    const img=MK.finished||MK.masked; if(!img) return;
-    ctx2.globalAlpha=MK.opacity; ctx2.globalCompositeOperation=MK.blend;
-    if(MK.persp&&MK.quad){
-      const q=MK.quad.map(p=>({x:p.x*scaleRatio,y:p.y*scaleRatio}));
-      drawWarped(ctx2, img, q, MK.dragging?14:(scaleRatio>1?40:24));
-    } else {
-      ctx2.save();
-      ctx2.translate(MK.x*scaleRatio,MK.y*scaleRatio); ctx2.rotate(MK.rot);
-      const s=effScale()*scaleRatio, w=MK.design.w*s, h=MK.design.h*s;
-      ctx2.drawImage(img,-w/2,-h/2,w,h);
-      ctx2.restore();
+  // pinta SÓ a peça (sem blend/opacidade) num canvas transparente do tamanho do alvo,
+  // já com perspetiva/forma/acabamento — base para sombra, derrame e reflexo
+  function renderDesignLayer(w,h,ratio){
+    const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+    const img=MK.finished||MK.masked; if(!img) return c;
+    if(MK.persp&&MK.quad){ drawWarped(x, img, MK.quad.map(p=>({x:p.x*ratio,y:p.y*ratio})), MK.dragging?14:(ratio>1?40:24)); }
+    else { x.save(); x.translate(MK.x*ratio,MK.y*ratio); x.rotate(MK.rot); const s=effScale()*ratio,dw=MK.design.w*s,dh=MK.design.h*s; x.drawImage(img,-dw/2,-dh/2,dw,dh); x.restore(); }
+    return c;
+  }
+  // compõe a peça sobre a cena (ctx2) com realismo de luz (sombra + derrame + reflexo)
+  function compositeDesignOnto(ctx2, ratio){
+    if(!MK.design) return;
+    const w=ctx2.canvas.width, h=ctx2.canvas.height;
+    const layer=renderDesignLayer(w,h,ratio);
+    const full=!MK.dragging; // durante o arrasto, salta efeitos pesados (fluidez)
+    const mn=Math.min(w,h);
+    // 1) SOMBRA de contacto (peça → ambiente)
+    if(full && MK.shadow>0){
+      const sh=document.createElement('canvas');sh.width=w;sh.height=h;const sx=sh.getContext('2d');
+      sx.drawImage(layer,0,0); sx.globalCompositeOperation='source-in'; sx.fillStyle='#000'; sx.fillRect(0,0,w,h);
+      const ang=(MK.shadowAngle||135)*Math.PI/180, off=(0.012+0.03*(MK.shadow/100))*mn;
+      const blur=Math.max(3,(0.02+0.03*(MK.shadow/100))*mn);
+      const b=document.createElement('canvas');b.width=w;b.height=h;const bx=b.getContext('2d');
+      bx.filter='blur('+blur+'px)'; bx.drawImage(sh,Math.cos(ang)*off,Math.sin(ang)*off);
+      ctx2.globalAlpha=Math.min(.75,MK.shadow/100*0.75); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
     }
+    // 2) DERRAME de luz / halo colorido (peça → ambiente)
+    if(full && MK.spill>0){
+      const g=document.createElement('canvas');g.width=w;g.height=h;const gx=g.getContext('2d');
+      const blur=Math.max(6,(0.03+0.07*(MK.spill/100))*mn);
+      gx.filter='blur('+blur+'px)'; gx.drawImage(layer,0,0);
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(1,MK.spill/100); ctx2.drawImage(g,0,0);
+      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    }
+    // 3) a PEÇA (com blend/opacidade do utilizador)
+    ctx2.globalAlpha=MK.opacity; ctx2.globalCompositeOperation=MK.blend; ctx2.drawImage(layer,0,0);
     ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    // 4) REFLEXO do ambiente no acrílico (ambiente → peça)
+    if(full && MK.reflect>0 && MK.scene){
+      const r=document.createElement('canvas');r.width=w;r.height=h;const rx=r.getContext('2d');
+      rx.filter='blur('+Math.max(2,0.012*mn)+'px)'; rx.drawImage(MK.scene,0,0,w,h);
+      rx.filter='none'; rx.globalCompositeOperation='destination-in'; rx.drawImage(layer,0,0);
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=MK.reflect/100*0.5; ctx2.drawImage(r,0,0);
+      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    }
   }
   window.renderMock=function(){
     const cv=$('mockCv'); if(!cv) return; const ctx2=cv.getContext('2d');
     ctx2.clearRect(0,0,MK.cw,MK.ch);
     if(MK.scene) ctx2.drawImage(MK.scene,0,0,MK.cw,MK.ch);
-    if(MK.design) paintDesign(ctx2,1);
+    if(MK.design) compositeDesignOnto(ctx2,1);
     drawHandles();
   };
   function drawHandles(){
@@ -343,7 +379,7 @@
     const ex=document.createElement('canvas');ex.width=NW;ex.height=NH;const ec=ex.getContext('2d');
     ec.imageSmoothingEnabled=true; ec.imageSmoothingQuality='high';
     ec.drawImage(MK.scene,0,0,NW,NH);
-    if(MK.design){ const wd=MK.dragging; MK.dragging=false; paintDesign(ec,ratio); MK.dragging=wd; }
+    if(MK.design){ const wd=MK.dragging; MK.dragging=false; compositeDesignOnto(ec,ratio); MK.dragging=wd; }
     return ex;
   }
   // FRONT: só o design (forma+acabamento), fundo transparente, ao tamanho/orientação escolhidos
@@ -426,6 +462,7 @@
       scene:sceneToDataURL(), nativeW:MK.nativeW, nativeH:MK.nativeH,
       quadN, mask:MK.mask, maskRadius:MK.maskRadius, blend:MK.blend, opacity:MK.opacity,
       finish:MK.finish, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
+      spill:MK.spill, shadow:MK.shadow, shadowAngle:MK.shadowAngle, reflect:MK.reflect,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
   };
@@ -443,6 +480,7 @@
       $('mkEmpty').style.display='none';
       MK.mask=t.mask; MK.maskRadius=(t.maskRadius!=null?t.maskRadius:0); MK.blend=t.blend; MK.opacity=(t.opacity!=null?t.opacity:1);
       MK.finish=t.finish||'none'; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
+      MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch}));
       if(MK.design) buildMasked();
       // sincronizar UI
@@ -451,6 +489,7 @@
       if($('mkFinish'))$('mkFinish').value=MK.finish; if($('mkOrient'))$('mkOrient').value=MK.orient;
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
+      [['mkSpill','spill'],['mkShadow','shadow'],['mkShAng','shadowAngle'],['mkReflect','reflect']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
       syncProps(); fitView(); renderMock(); mockCloseLib();
     };
     img.src=t.scene;

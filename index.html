@@ -3412,7 +3412,12 @@ window.addEventListener('keydown',e=>{
     </div>
     <div class="mk-row" id="mkCustomRow" style="display:none"><span>cm</span><input type="number" id="mkCustomW" value="30" min="1" style="width:56px" oninput="mockSetCustom('w',this.value)"><span style="color:#46606e">×</span><input type="number" id="mkCustomH" value="30" min="1" style="width:56px" oninput="mockSetCustom('h',this.value)"></div>
     <div class="mk-row"><button class="mk-b" id="mkPerspBtn" onclick="mockTogglePersp()">Perspetiva</button></div>
-    <div class="mk-hint">Mover: arrasta · escalar: cantos · rodar: pega de cima (Shift trava). <b>Perspetiva ON</b> → arrasta cada canto para encaixar a placa em ângulo. <b>Cantos</b> arredonda Retângulo/Quadrado (0 = normais).</div>
+    <div class="mk-row" style="flex-basis:100%;margin-top:4px"><span style="color:#6f8a98;font-size:10px;letter-spacing:.1em;text-transform:uppercase">Luz &amp; realismo</span></div>
+    <div class="mk-row"><span>Derrame de luz</span><input type="range" id="mkSpill" min="0" max="100" value="0" oninput="mockSetSpill(this.value)"><span class="mk-v" id="mkSpillV">0</span></div>
+    <div class="mk-row"><span>Sombra</span><input type="range" id="mkShadow" min="0" max="100" value="0" oninput="mockSetShadow(this.value)"><span class="mk-v" id="mkShadowV">0</span></div>
+    <div class="mk-row"><span>Ângulo luz</span><input type="range" id="mkShAng" min="0" max="360" value="135" oninput="mockSetShadowAngle(this.value)"><span class="mk-v" id="mkShAngV">135</span></div>
+    <div class="mk-row"><span>Reflexo ambiente</span><input type="range" id="mkReflect" min="0" max="100" value="0" oninput="mockSetReflect(this.value)"><span class="mk-v" id="mkReflectV">0</span></div>
+    <div class="mk-hint">Mover: arrasta · escalar: cantos · rodar: pega de cima (Shift trava). <b>Perspetiva ON</b> → arrasta cada canto para encaixar a placa em ângulo. <b>Cantos</b> arredonda Retângulo/Quadrado (0 = normais). <b>Derrame</b> = a peça ilumina a parede · <b>Reflexo</b> = a sala reflete-se no acrílico.</div>
   </div>
 </div>
 <div id="mkLib" hidden>
