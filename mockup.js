@@ -93,43 +93,71 @@
 
   // ── máscara de forma (aplicada ao design na sua resolução de origem) ─────────
   function rr(x,X,Y,w,h,r){ r=Math.min(r,w/2,h/2); x.beginPath();x.moveTo(X+r,Y);x.arcTo(X+w,Y,X+w,Y+h,r);x.arcTo(X+w,Y+h,X,Y+h,r);x.arcTo(X,Y+h,X,Y,r);x.arcTo(X,Y,X+w,Y,r);x.closePath(); }
+  // desenha o caminho da forma atual num contexto (para fill/stroke/clip)
+  function shapePath(x,w,h){
+    const sh=MK.mask, rad=(MK.maskRadius/100);
+    if(sh==='ellipse'){ x.beginPath();x.ellipse(w/2,h/2,w/2,h/2,0,0,Math.PI*2); }
+    else if(sh==='circle'){ x.beginPath();x.arc(w/2,h/2,Math.min(w,h)/2,0,Math.PI*2); }
+    else if(sh==='square'){ const s=Math.min(w,h); rr(x,(w-s)/2,(h-s)/2,s,s,s*rad); }
+    else { rr(x,0,0,w,h,Math.min(w,h)*rad); } // rect/round
+  }
   // formas com cantos: rect e square aceitam raio (0 = cantos normais, >0 = arredondados)
   function buildMasked(){
-    if(!MK.design){ MK.masked=null; MK.finished=null; return; }
+    if(!MK.design){ MK.masked=null; MK.finished=null; MK.shapeMask=null; return; }
     const w=MK.design.w,h=MK.design.h;
+    // máscara da FORMA (alpha da placa, independente da arte)
+    const sm=document.createElement('canvas');sm.width=w;sm.height=h;const smx=sm.getContext('2d');
+    smx.fillStyle='#fff'; shapePath(smx,w,h); smx.fill(); MK.shapeMask=sm;
+    // arte recortada à forma
     const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
-    x.fillStyle='#fff';
-    const sh=MK.mask, rad=(MK.maskRadius/100);
-    if(sh==='rect'||sh==='round'){ rr(x,0,0,w,h,Math.min(w,h)*rad); x.fill(); }
-    else if(sh==='square'){ const s=Math.min(w,h); rr(x,(w-s)/2,(h-s)/2,s,s,s*rad); x.fill(); }
-    else if(sh==='ellipse'){ x.beginPath();x.ellipse(w/2,h/2,w/2,h/2,0,0,Math.PI*2);x.fill(); }
-    else if(sh==='circle'){ x.beginPath();x.arc(w/2,h/2,Math.min(w,h)/2,0,Math.PI*2);x.fill(); }
-    else x.fillRect(0,0,w,h);
-    x.globalCompositeOperation='source-in';
-    x.drawImage(MK.design.src,0,0,w,h);
+    x.drawImage(sm,0,0); x.globalCompositeOperation='source-in'; x.drawImage(MK.design.src,0,0,w,h);
     MK.masked=c; buildFinished();
   }
-  // acabamento de material aplicado dentro da forma (segue a perspetiva)
+  // acabamento de material — dá CORPO de placa: base translúcida + arte + reflexo de vidro + borda
   function buildFinished(){
     if(!MK.masked){ MK.finished=null; return; }
     if(MK.finish==='none'||!MK.finish){ MK.finished=MK.masked; return; }
-    const w=MK.masked.width,h=MK.masked.height;
+    const w=MK.masked.width,h=MK.masked.height, mn=Math.min(w,h);
     const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+
     if(MK.finish==='lightbox'){
+      // glow interior (a placa emite luz)
       const g=document.createElement('canvas');g.width=w;g.height=h;const gx=g.getContext('2d');
-      gx.filter='blur('+Math.max(2,Math.round(Math.min(w,h)*0.045))+'px)'; gx.drawImage(MK.masked,0,0);
+      gx.filter='blur('+Math.max(2,Math.round(mn*0.04))+'px)'; gx.drawImage(MK.masked,0,0);
       x.drawImage(g,0,0); x.globalCompositeOperation='screen'; x.drawImage(g,0,0);
       x.globalCompositeOperation='source-over'; x.drawImage(MK.masked,0,0);
-      x.globalCompositeOperation='source-atop'; x.fillStyle='rgba(255,250,235,.16)'; x.fillRect(0,0,w,h);
+      x.globalCompositeOperation='source-atop'; x.fillStyle='rgba(255,250,235,.14)'; x.fillRect(0,0,w,h);
       x.globalCompositeOperation='source-over';
     } else if(MK.finish==='acrylic'){
+      // 1) CORPO translúcido — placa frosted (vê-se mesmo onde a arte é transparente)
+      x.drawImage(MK.shapeMask,0,0); x.globalCompositeOperation='source-in';
+      x.fillStyle='rgba(246,248,251,.20)'; x.fillRect(0,0,w,h); x.globalCompositeOperation='source-over';
+      // 2) a ARTE por cima
       x.drawImage(MK.masked,0,0);
-      const sg=x.createLinearGradient(0,0,w,h);
-      sg.addColorStop(0,'rgba(255,255,255,.24)');sg.addColorStop(.22,'rgba(255,255,255,.05)');
-      sg.addColorStop(.5,'rgba(255,255,255,0)');sg.addColorStop(.82,'rgba(255,255,255,.04)');sg.addColorStop(1,'rgba(255,255,255,.14)');
-      x.globalCompositeOperation='source-atop'; x.fillStyle=sg; x.fillRect(0,0,w,h);
-      x.globalCompositeOperation='source-over';
     } else { MK.finished=MK.masked; return; }
+
+    // ── camadas de VIDRO comuns a acrylic/lightbox, recortadas à forma ──
+    x.save(); shapePath(x,w,h); x.clip();
+    // reflexo de vidro: faixa especular diagonal definida (como reflexo de janela)
+    const spec=MK.finish==='acrylic'?1:0.6;
+    const lg=x.createLinearGradient(0,0,w*0.85,h);
+    lg.addColorStop(0.00,'rgba(255,255,255,0)');
+    lg.addColorStop(0.30,'rgba(255,255,255,0)');
+    lg.addColorStop(0.42,'rgba(255,255,255,'+(0.20*spec)+')');
+    lg.addColorStop(0.50,'rgba(255,255,255,'+(0.34*spec)+')');
+    lg.addColorStop(0.58,'rgba(255,255,255,'+(0.20*spec)+')');
+    lg.addColorStop(0.70,'rgba(255,255,255,0)');
+    x.globalCompositeOperation='lighter'; x.fillStyle=lg; x.fillRect(0,0,w,h);
+    // brilho suave no canto superior
+    const cg=x.createLinearGradient(0,0,0,h*0.5);
+    cg.addColorStop(0,'rgba(255,255,255,'+(0.10*spec)+')'); cg.addColorStop(1,'rgba(255,255,255,0)');
+    x.fillStyle=cg; x.fillRect(0,0,w,h);
+    x.restore();
+    // 3) BORDA de acrílico — halo claro + linha interior escura nítida (define a placa)
+    x.save(); shapePath(x,w,h);
+    x.lineWidth=Math.max(3,mn*0.016); x.strokeStyle='rgba(255,255,255,.34)'; x.stroke();
+    x.lineWidth=Math.max(1.5,mn*0.006); x.strokeStyle='rgba(0,0,0,.30)'; x.stroke();
+    x.restore();
     MK.finished=c;
   }
   function shapeHasCorners(){ return MK.mask==='rect'||MK.mask==='square'||MK.mask==='round'; }
@@ -138,9 +166,9 @@
   window.mockSetRadius=function(v){ mkSnapshot(); MK.maskRadius=+v; $('mkRadiusV').textContent=Math.round(v); buildMasked(); renderMock(); };
   window.mockSetFinish=function(v){
     mkSnapshot(true); MK.finish=v; buildFinished();
-    // o acabamento traz já um realismo base (sombra/reflexo/derrame), se ainda a zero
-    if(v==='acrylic'){ if(MK.shadow===0)MK.shadow=28; if(MK.reflect===0)MK.reflect=22; }
-    else if(v==='lightbox'){ if(MK.spill===0)MK.spill=55; if(MK.shadow===0)MK.shadow=15; }
+    // o acabamento traz já um realismo base (se ainda a zero)
+    if(v==='acrylic'){ if(MK.shadow===0)MK.shadow=40; if(MK.reflect===0)MK.reflect=20; MK.spill=0; } // vidro: sem halo
+    else if(v==='lightbox'){ if(MK.spill===0)MK.spill=45; if(MK.shadow===0)MK.shadow=15; }
     setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkReflect',MK.reflect);
     renderMock();
   };
@@ -277,13 +305,16 @@
   // ── render ────────────────────────────────────────────────────────────────────
   // pinta SÓ a peça (sem blend/opacidade) num canvas transparente do tamanho do alvo,
   // já com perspetiva/forma/acabamento — base para sombra, derrame e reflexo
-  function renderDesignLayer(w,h,ratio){
+  function renderLayerOf(img,w,h,ratio){
     const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
-    const img=MK.finished||MK.masked; if(!img) return c;
+    if(!img) return c;
     if(MK.persp&&MK.quad){ drawWarped(x, img, MK.quad.map(p=>({x:p.x*ratio,y:p.y*ratio})), MK.dragging?14:(ratio>1?40:24)); }
     else { x.save(); x.translate(MK.x*ratio,MK.y*ratio); x.rotate(MK.rot); const s=effScale()*ratio,dw=MK.design.w*s,dh=MK.design.h*s; x.drawImage(img,-dw/2,-dh/2,dw,dh); x.restore(); }
     return c;
   }
+  function renderDesignLayer(w,h,ratio){ return renderLayerOf(MK.finished||MK.masked,w,h,ratio); }
+  // a placa como retângulo SÓLIDO (forma), p/ sombra e reflexo definirem a peça mesmo com arte transparente
+  function renderShapeLayer(w,h,ratio){ return renderLayerOf(MK.shapeMask,w,h,ratio); }
   // compõe a peça sobre a cena (ctx2) com realismo de luz (sombra + derrame + reflexo)
   function compositeDesignOnto(ctx2, ratio){
     if(!MK.design) return;
@@ -291,22 +322,25 @@
     const layer=renderDesignLayer(w,h,ratio);
     const full=!MK.dragging; // durante o arrasto, salta efeitos pesados (fluidez)
     const mn=Math.min(w,h);
-    // 1) SOMBRA de contacto (peça → ambiente)
+    // silhueta para a sombra: se há acabamento (placa física), usa o RETÂNGULO da placa; senão a arte
+    const hasPanel=(MK.finish&&MK.finish!=='none'&&MK.shapeMask);
+    const shadowSilh=hasPanel?renderShapeLayer(w,h,ratio):layer;
+    // 1) SOMBRA de contacto / afastamento (peça → ambiente)
     if(full && MK.shadow>0){
       const sh=document.createElement('canvas');sh.width=w;sh.height=h;const sx=sh.getContext('2d');
-      sx.drawImage(layer,0,0); sx.globalCompositeOperation='source-in'; sx.fillStyle='#000'; sx.fillRect(0,0,w,h);
+      sx.drawImage(shadowSilh,0,0); sx.globalCompositeOperation='source-in'; sx.fillStyle='#000'; sx.fillRect(0,0,w,h);
       const ang=(MK.shadowAngle||135)*Math.PI/180, off=(0.015+0.07*(MK.shadow/100))*mn; // afastamento da parede
       const blur=Math.max(4,(0.02+0.055*(MK.shadow/100))*mn);
       const b=document.createElement('canvas');b.width=w;b.height=h;const bx=b.getContext('2d');
       bx.filter='blur('+blur+'px)'; bx.drawImage(sh,Math.cos(ang)*off,Math.sin(ang)*off);
       ctx2.globalAlpha=Math.min(.8,MK.shadow/100*0.8); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
     }
-    // 2) DERRAME de luz / halo colorido (peça → ambiente)
+    // 2) DERRAME de luz / halo colorido (peça → ambiente) — contido, não "projetor"
     if(full && MK.spill>0){
       const g=document.createElement('canvas');g.width=w;g.height=h;const gx=g.getContext('2d');
-      const blur=Math.max(6,(0.03+0.07*(MK.spill/100))*mn);
+      const blur=Math.max(5,(0.012+0.035*(MK.spill/100))*mn); // bem mais apertado que antes
       gx.filter='blur('+blur+'px)'; gx.drawImage(layer,0,0);
-      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(1,MK.spill/100); ctx2.drawImage(g,0,0);
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(0.85,MK.spill/100*0.85); ctx2.drawImage(g,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 3) a PEÇA (com blend/opacidade do utilizador)
