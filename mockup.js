@@ -16,6 +16,7 @@
     persp:false, quad:null, // modo perspetiva: 4 cantos livres [TL,TR,BR,BL]
     mask:'rect', maskRadius:0, finished:null,
     finish:'none',          // acabamento: none | acrylic | lightbox
+    fillPanel:false, domColor:'rgb(210,210,210)',   // preencher placa com a cor da arte
     spill:0, shadow:0, shadowAngle:135, reflect:0,  // V5 realismo: derrame, sombra, reflexo
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
@@ -101,10 +102,20 @@
     else if(sh==='square'){ const s=Math.min(w,h); rr(x,(w-s)/2,(h-s)/2,s,s,s*rad); }
     else { rr(x,0,0,w,h,Math.min(w,h)*rad); } // rect/round
   }
+  // cor dominante da arte (média ponderada pelo alpha) — p/ "preencher placa"
+  function computeDom(){
+    if(!MK.design){ MK.domColor='rgb(210,210,210)'; return; }
+    const t=document.createElement('canvas');t.width=40;t.height=40;const x=t.getContext('2d');
+    x.drawImage(MK.design.src,0,0,40,40);
+    const d=x.getImageData(0,0,40,40).data; let r=0,g=0,b=0,a=0;
+    for(let i=0;i<d.length;i+=4){ const al=d[i+3]/255; r+=d[i]*al; g+=d[i+1]*al; b+=d[i+2]*al; a+=al; }
+    MK.domColor = a<1 ? 'rgb(210,210,210)' : 'rgb('+Math.round(r/a)+','+Math.round(g/a)+','+Math.round(b/a)+')';
+  }
   // formas com cantos: rect e square aceitam raio (0 = cantos normais, >0 = arredondados)
   function buildMasked(){
     if(!MK.design){ MK.masked=null; MK.finished=null; MK.shapeMask=null; return; }
     const w=MK.design.w,h=MK.design.h;
+    computeDom();
     // máscara da FORMA (alpha da placa, independente da arte)
     const sm=document.createElement('canvas');sm.width=w;sm.height=h;const smx=sm.getContext('2d');
     smx.fillStyle='#fff'; shapePath(smx,w,h); smx.fill(); MK.shapeMask=sm;
@@ -113,28 +124,27 @@
     x.drawImage(sm,0,0); x.globalCompositeOperation='source-in'; x.drawImage(MK.design.src,0,0,w,h);
     MK.masked=c; buildFinished();
   }
-  // acabamento de material — dá CORPO de placa: base translúcida + arte + reflexo de vidro + borda
+  // acabamento de material — dá CORPO de placa: base + arte + reflexo de vidro + borda
   function buildFinished(){
     if(!MK.masked){ MK.finished=null; return; }
     if(MK.finish==='none'||!MK.finish){ MK.finished=MK.masked; return; }
     const w=MK.masked.width,h=MK.masked.height, mn=Math.min(w,h);
     const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
 
+    // 1) CORPO da placa (sob tudo): cor da arte (preencher) ou frosted branco translúcido
+    x.drawImage(MK.shapeMask,0,0); x.globalCompositeOperation='source-in';
+    if(MK.fillPanel){ x.globalAlpha=0.92; x.fillStyle=MK.domColor||'#cccccc'; x.fillRect(0,0,w,h); x.globalAlpha=1; }
+    else { x.fillStyle='rgba(246,248,251,.20)'; x.fillRect(0,0,w,h); }
+    x.globalCompositeOperation='source-over';
+    // 2) glow interior (lightbox) — antes da arte
     if(MK.finish==='lightbox'){
-      // glow interior (a placa emite luz)
       const g=document.createElement('canvas');g.width=w;g.height=h;const gx=g.getContext('2d');
       gx.filter='blur('+Math.max(2,Math.round(mn*0.04))+'px)'; gx.drawImage(MK.masked,0,0);
-      x.drawImage(g,0,0); x.globalCompositeOperation='screen'; x.drawImage(g,0,0);
-      x.globalCompositeOperation='source-over'; x.drawImage(MK.masked,0,0);
-      x.globalCompositeOperation='source-atop'; x.fillStyle='rgba(255,250,235,.14)'; x.fillRect(0,0,w,h);
-      x.globalCompositeOperation='source-over';
-    } else if(MK.finish==='acrylic'){
-      // 1) CORPO translúcido — placa frosted (vê-se mesmo onde a arte é transparente)
-      x.drawImage(MK.shapeMask,0,0); x.globalCompositeOperation='source-in';
-      x.fillStyle='rgba(246,248,251,.20)'; x.fillRect(0,0,w,h); x.globalCompositeOperation='source-over';
-      // 2) a ARTE por cima
-      x.drawImage(MK.masked,0,0);
-    } else { MK.finished=MK.masked; return; }
+      x.globalCompositeOperation='screen'; x.drawImage(g,0,0); x.globalCompositeOperation='source-over';
+    }
+    // 3) a ARTE
+    x.drawImage(MK.masked,0,0);
+    if(MK.finish==='lightbox'){ x.globalCompositeOperation='source-atop'; x.fillStyle='rgba(255,250,235,.12)'; x.fillRect(0,0,w,h); x.globalCompositeOperation='source-over'; }
 
     // ── camadas de VIDRO comuns a acrylic/lightbox, recortadas à forma ──
     x.save(); shapePath(x,w,h); x.clip();
@@ -176,6 +186,7 @@
   window.mockSetShadow=function(v){ mkSnapshot(); MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
   window.mockSetShadowAngle=function(v){ mkSnapshot(); MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
   window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
+  window.mockToggleFill=function(){ mkSnapshot(true); MK.fillPanel=!MK.fillPanel; buildFinished(); const b=$('mkFillBtn'); if(b){b.classList.toggle('on',MK.fillPanel); b.textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa';} renderMock(); };
   window.mockSetOrient=function(v){ MK.orient=v; };
   window.mockSetSize=function(v){ MK.size=v; $('mkCustomRow').style.display=(v==='custom')?'':'none'; };
   window.mockSetCustom=function(which,v){ if(which==='w')MK.customW=+v; else MK.customH=+v; };
@@ -187,10 +198,11 @@
     if($('mkOrient'))$('mkOrient').value=MK.orient; if($('mkSize'))$('mkSize').value=MK.size;
     if($('mkRadiusRow'))$('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
     if($('mkPerspBtn')){ $('mkPerspBtn').classList.toggle('on',MK.persp); $('mkPerspBtn').textContent=MK.persp?'Perspetiva: ON':'Perspetiva'; }
+    if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
   }
   // ── UNDO (Ctrl/Cmd+Z, só na aba Mockups) ──────────────────────────────────────
   let _undo=[], _lastSnap=0;
-  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,spill:MK.spill,shadow:MK.shadow,shadowAngle:MK.shadowAngle,reflect:MK.reflect}); }
+  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,spill:MK.spill,shadow:MK.shadow,shadowAngle:MK.shadowAngle,reflect:MK.reflect}); }
   function mkSnapshot(force){ if(!MK.design)return; const now=Date.now(); if(!force && now-_lastSnap<600) return; _lastSnap=now; _undo.push(mkSerial()); if(_undo.length>60)_undo.shift(); }
   window.mockUndo=function(){ if(!_undo.length) return; const s=JSON.parse(_undo.pop()); Object.assign(MK,s); if(MK.quad)MK.quad=MK.quad.map(p=>({x:p.x,y:p.y})); buildMasked(); syncAllUI(); MK.selected=true; renderMock(); };
 
@@ -529,7 +541,7 @@
     const t={ id:'t'+Date.now(), name, type, created:Date.now(),
       scene:sceneToDataURL(), nativeW:MK.nativeW, nativeH:MK.nativeH,
       quadN, mask:MK.mask, maskRadius:MK.maskRadius, blend:MK.blend, opacity:MK.opacity,
-      finish:MK.finish, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
+      finish:MK.finish, fillPanel:MK.fillPanel, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
       spill:MK.spill, shadow:MK.shadow, shadowAngle:MK.shadowAngle, reflect:MK.reflect,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
@@ -547,7 +559,7 @@
       $('mockCv').width=MK.cw;$('mockCv').height=MK.ch;$('mockOv').width=MK.cw;$('mockOv').height=MK.ch;
       $('mkEmpty').style.display='none';
       MK.mask=t.mask; MK.maskRadius=(t.maskRadius!=null?t.maskRadius:0); MK.blend=t.blend; MK.opacity=(t.opacity!=null?t.opacity:1);
-      MK.finish=t.finish||'none'; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
+      MK.finish=t.finish||'none'; MK.fillPanel=!!t.fillPanel; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
       MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
@@ -555,6 +567,7 @@
       $('mkMask').value=MK.mask; $('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
       $('mkRadius').value=MK.maskRadius; $('mkRadiusV').textContent=Math.round(MK.maskRadius);
       if($('mkFinish'))$('mkFinish').value=MK.finish; if($('mkOrient'))$('mkOrient').value=MK.orient;
+      if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
       [['mkSpill','spill'],['mkShadow','shadow'],['mkShAng','shadowAngle'],['mkReflect','reflect']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
