@@ -19,7 +19,7 @@
     spill:0, shadow:0, shadowAngle:135, reflect:0,  // V5 realismo: derrame, sombra, reflexo
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
-    active:false, drag:null,
+    active:false, drag:null, selected:false,
   };
   const WORK_MAX = 1600;
   const $ = id => document.getElementById(id);
@@ -63,7 +63,7 @@
     r.readAsDataURL(f); input.value='';
   };
   function setDesign(src,w,h){
-    MK.design={src,w,h};
+    MK.design={src,w,h}; MK.selected=true;
     buildMasked();
     // se há uma placa de template ativa (perspetiva+quad), o design entra logo nela;
     // caso contrário, posiciona ao centro (comportamento normal)
@@ -133,20 +133,43 @@
     MK.finished=c;
   }
   function shapeHasCorners(){ return MK.mask==='rect'||MK.mask==='square'||MK.mask==='round'; }
-  window.mockSetMask=function(shape){ MK.mask=shape; buildMasked(); $('mkRadiusRow').style.display=shapeHasCorners()?'':'none'; renderMock(); };
-  window.mockSetRadius=function(v){ MK.maskRadius=+v; $('mkRadiusV').textContent=Math.round(v); buildMasked(); renderMock(); };
-  window.mockSetFinish=function(v){ MK.finish=v; buildFinished(); renderMock(); };
-  window.mockSetSpill=function(v){ MK.spill=+v; $('mkSpillV').textContent=Math.round(v); renderMock(); };
-  window.mockSetShadow=function(v){ MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
-  window.mockSetShadowAngle=function(v){ MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
-  window.mockSetReflect=function(v){ MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
+  function setUI(id,val){ const s=$(id); if(s)s.value=val; const v=$(id+'V'); if(v)v.textContent=Math.round(val); }
+  window.mockSetMask=function(shape){ mkSnapshot(); MK.mask=shape; buildMasked(); $('mkRadiusRow').style.display=shapeHasCorners()?'':'none'; renderMock(); };
+  window.mockSetRadius=function(v){ mkSnapshot(); MK.maskRadius=+v; $('mkRadiusV').textContent=Math.round(v); buildMasked(); renderMock(); };
+  window.mockSetFinish=function(v){
+    mkSnapshot(true); MK.finish=v; buildFinished();
+    // o acabamento traz já um realismo base (sombra/reflexo/derrame), se ainda a zero
+    if(v==='acrylic'){ if(MK.shadow===0)MK.shadow=28; if(MK.reflect===0)MK.reflect=22; }
+    else if(v==='lightbox'){ if(MK.spill===0)MK.spill=55; if(MK.shadow===0)MK.shadow=15; }
+    setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkReflect',MK.reflect);
+    renderMock();
+  };
+  window.mockSetSpill=function(v){ mkSnapshot(); MK.spill=+v; $('mkSpillV').textContent=Math.round(v); renderMock(); };
+  window.mockSetShadow=function(v){ mkSnapshot(); MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
+  window.mockSetShadowAngle=function(v){ mkSnapshot(); MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
+  window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
   window.mockSetOrient=function(v){ MK.orient=v; };
   window.mockSetSize=function(v){ MK.size=v; $('mkCustomRow').style.display=(v==='custom')?'':'none'; };
   window.mockSetCustom=function(which,v){ if(which==='w')MK.customW=+v; else MK.customH=+v; };
+  // sincroniza TODA a UI a partir do estado MK (usado no undo e ao aplicar template)
+  function syncAllUI(){
+    setUI('mkOpacity',Math.round(MK.opacity*100)); setUI('mkScale',Math.round(MK.scaleMul*100)); setUI('mkRot',Math.round(MK.rot*180/Math.PI));
+    setUI('mkRadius',MK.maskRadius); setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkShAng',MK.shadowAngle); setUI('mkReflect',MK.reflect);
+    if($('mkBlend'))$('mkBlend').value=MK.blend; if($('mkMask'))$('mkMask').value=MK.mask; if($('mkFinish'))$('mkFinish').value=MK.finish;
+    if($('mkOrient'))$('mkOrient').value=MK.orient; if($('mkSize'))$('mkSize').value=MK.size;
+    if($('mkRadiusRow'))$('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
+    if($('mkPerspBtn')){ $('mkPerspBtn').classList.toggle('on',MK.persp); $('mkPerspBtn').textContent=MK.persp?'Perspetiva: ON':'Perspetiva'; }
+  }
+  // ── UNDO (Ctrl/Cmd+Z, só na aba Mockups) ──────────────────────────────────────
+  let _undo=[], _lastSnap=0;
+  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,spill:MK.spill,shadow:MK.shadow,shadowAngle:MK.shadowAngle,reflect:MK.reflect}); }
+  function mkSnapshot(force){ if(!MK.design)return; const now=Date.now(); if(!force && now-_lastSnap<600) return; _lastSnap=now; _undo.push(mkSerial()); if(_undo.length>60)_undo.shift(); }
+  window.mockUndo=function(){ if(!_undo.length) return; const s=JSON.parse(_undo.pop()); Object.assign(MK,s); if(MK.quad)MK.quad=MK.quad.map(p=>({x:p.x,y:p.y})); buildMasked(); syncAllUI(); MK.selected=true; renderMock(); };
 
   // ── perspetiva ────────────────────────────────────────────────────────────────
   window.mockTogglePersp=function(){
     if(!MK.design) return;
+    mkSnapshot(true);
     MK.persp=!MK.persp;
     if(MK.persp) MK.quad=designCorners();   // arranca dos cantos afins atuais
     else MK.quad=null;
@@ -157,6 +180,7 @@
 
   // ── propriedades ──────────────────────────────────────────────────────────────
   window.mockSet=function(prop,val){
+    mkSnapshot();
     if(prop==='opacity'){ MK.opacity=val; $('mkOpacityV').textContent=Math.round(val*100); }
     else if(prop==='scaleP'){ const m=val/100; if(MK.persp){ scaleQuad(m/(MK.scaleMul||1)); } MK.scaleMul=m; $('mkScaleV').textContent=Math.round(val); }
     else if(prop==='rotD'){ const rad=val*Math.PI/180; if(MK.persp){ rotateQuad(rad-MK.rot); } MK.rot=rad; $('mkRotV').textContent=Math.round(val); }
@@ -271,11 +295,11 @@
     if(full && MK.shadow>0){
       const sh=document.createElement('canvas');sh.width=w;sh.height=h;const sx=sh.getContext('2d');
       sx.drawImage(layer,0,0); sx.globalCompositeOperation='source-in'; sx.fillStyle='#000'; sx.fillRect(0,0,w,h);
-      const ang=(MK.shadowAngle||135)*Math.PI/180, off=(0.012+0.03*(MK.shadow/100))*mn;
-      const blur=Math.max(3,(0.02+0.03*(MK.shadow/100))*mn);
+      const ang=(MK.shadowAngle||135)*Math.PI/180, off=(0.015+0.07*(MK.shadow/100))*mn; // afastamento da parede
+      const blur=Math.max(4,(0.02+0.055*(MK.shadow/100))*mn);
       const b=document.createElement('canvas');b.width=w;b.height=h;const bx=b.getContext('2d');
       bx.filter='blur('+blur+'px)'; bx.drawImage(sh,Math.cos(ang)*off,Math.sin(ang)*off);
-      ctx2.globalAlpha=Math.min(.75,MK.shadow/100*0.75); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
+      ctx2.globalAlpha=Math.min(.8,MK.shadow/100*0.8); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
     }
     // 2) DERRAME de luz / halo colorido (peça → ambiente)
     if(full && MK.spill>0){
@@ -307,7 +331,7 @@
   function drawHandles(){
     const ov=$('mockOv'); if(!ov) return; const o=ov.getContext('2d');
     o.clearRect(0,0,MK.cw,MK.ch);
-    if(!MK.design||!MK.active) return;
+    if(!MK.design||!MK.active||!MK.selected) return;
     const c=currentCorners(); const k=1/(viewScale()||1);
     o.lineWidth=1.5*k; o.strokeStyle=MK.persp?'rgba(255,180,90,.95)':'rgba(90,172,200,.9)'; o.setLineDash([5*k,4*k]);
     o.beginPath();o.moveTo(c[0].x,c[0].y);for(let i=1;i<4;i++)o.lineTo(c[i].x,c[i].y);o.closePath();o.stroke();
@@ -344,8 +368,11 @@
   function pointInQuad(p,q){ let inside=false; for(let i=0,j=3;i<4;j=i++){ const xi=q[i].x,yi=q[i].y,xj=q[j].x,yj=q[j].y; if(((yi>p.y)!==(yj>p.y))&&(p.x<(xj-xi)*(p.y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
 
   function onDown(e){
-    if(!MK.design) return; const p=evPos(e),hit=hitTest(p); if(!hit) return; e.preventDefault();
-    MK.dragging=true;
+    if(!MK.design) return; const p=evPos(e); let hit=hitTest(p);
+    if(!hit){ if(MK.selected){ MK.selected=false; renderMock(); } return; }  // clicar fora → desselecionar
+    e.preventDefault();
+    if(!MK.selected){ MK.selected=true; hit={type:'move'}; renderMock(); }    // 1º clique só seleciona+move
+    mkSnapshot(true); MK.dragging=true;
     MK.drag={ ...hit, sx:p.x,sy:p.y, ox:MK.x,oy:MK.y, sScale:MK.scaleMul, sRot:MK.rot,
       dist0:Math.hypot(p.x-MK.x,p.y-MK.y), ang0:Math.atan2(p.y-MK.y,p.x-MK.x),
       quad0: MK.quad?MK.quad.map(q=>({...q})):null };
@@ -370,7 +397,14 @@
     syncProps(); renderMock();
   }
   function onUp(e){ if(MK.drag){ MK.drag=null; MK.dragging=false; try{$('mockOv').releasePointerCapture(e.pointerId);}catch(_){ } renderMock(); } }
-  function bindStage(){ const ov=$('mockOv'); ov.addEventListener('pointerdown',onDown); ov.addEventListener('pointermove',onMove); ov.addEventListener('pointerup',onUp); ov.addEventListener('pointercancel',onUp); }
+  function bindStage(){
+    const ov=$('mockOv'); ov.addEventListener('pointerdown',onDown); ov.addEventListener('pointermove',onMove); ov.addEventListener('pointerup',onUp); ov.addEventListener('pointercancel',onUp);
+    // Ctrl/Cmd+Z → desfaz no módulo Mockups (em captura, antes do editor de Design)
+    window.addEventListener('keydown',e=>{
+      if(!MK.active) return;
+      if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); e.stopPropagation(); mockUndo(); }
+    },true);
+  }
 
   // ── composição das 3 saídas (resolução nativa) ──────────────────────────────────
   // WALL: cena + design (perspetiva/máscara/acabamento)
@@ -481,7 +515,7 @@
       MK.mask=t.mask; MK.maskRadius=(t.maskRadius!=null?t.maskRadius:0); MK.blend=t.blend; MK.opacity=(t.opacity!=null?t.opacity:1);
       MK.finish=t.finish||'none'; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
       MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
-      MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch}));
+      MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
       $('mkMask').value=MK.mask; $('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
