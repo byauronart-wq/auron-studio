@@ -275,6 +275,7 @@ body.simple .pro{display:none!important}
     <button class="tb-btn add" onclick="addLayer('perlin')"><svg class="ico" viewBox="0 0 14 14"><path d="M1 7 Q2.5 4 4 7 Q5.5 10 7 7 Q8.5 4 10 6 Q11.5 8 13 6"/></svg>Perlin</button>
     <button class="tb-btn add" onclick="addLayer('grid')"><svg class="ico" viewBox="0 0 14 14"><line x1="1" y1="5" x2="13" y2="5"/><line x1="1" y1="9" x2="13" y2="9"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="9" y1="1" x2="9" y2="13"/></svg>Grid</button>
     <button class="tb-btn add" onclick="addLayer('vector')"><svg class="ico" viewBox="0 0 14 14"><polyline points="2,10 5,4 8,8 11,3"/><circle cx="2" cy="10" r="1.2" fill="currentColor"/><circle cx="5" cy="4" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="11" cy="3" r="1.2" fill="currentColor"/></svg>Vector</button>
+    <button class="tb-btn add" onclick="addLayer('mesh')"><svg class="ico" viewBox="0 0 14 14"><path d="M1 9 Q4 3 7 6 Q10 9 13 4"/><path d="M1 6 Q4 11 7 8 Q10 5 13 10" opacity=".55"/></svg>Malha 3D</button>
     <button class="tb-btn add" onclick="addLayer('veil')"><svg class="ico" viewBox="0 0 14 14"><ellipse cx="7" cy="7" rx="5" ry="3.5"/><ellipse cx="7" cy="7" rx="5" ry="3.5" opacity=".4" transform="rotate(45 7 7)"/></svg>Véu</button>
     <button class="tb-btn add" onclick="el('imgFile').click()"><svg class="ico" viewBox="0 0 14 14"><rect x="1" y="2" width="12" height="10" rx="1"/><polyline points="1,10 4,6 7,9 10,5 13,8"/><circle cx="10" cy="4.5" r="1.2"/></svg>Imagem</button>
     <input type="file" id="imgFile" accept="image/*,.svg" style="display:none" onchange="addImageLayer(this)">
@@ -643,7 +644,7 @@ function interpColor(colors,t){
 // ═══ LAYER FACTORY ════════════════════════════════════════════════════════════
 function mkLayer(type,over){
   return Object.assign({
-    id:uid++,name:{blob:'Foco',ring:'Anel',noise:'Ruído',veil:'Véu',image:'Imagem',caustic:'Cáusticas',grid:'Grid',perlin:'Perlin',vector:'Vector'}[type]||type,
+    id:uid++,name:{blob:'Foco',ring:'Anel',noise:'Ruído',veil:'Véu',image:'Imagem',caustic:'Cáusticas',grid:'Grid',perlin:'Perlin',vector:'Vector',mesh:'Malha 3D'}[type]||type,
     visible:true,locked:false,collapsed:false,type,
     blend:'source-over',opacity:100,fillOpacity:100,
     colors:['#ffffff'],gradDir:'in-out',gradAngle:0,
@@ -688,6 +689,10 @@ function mkLayer(type,over){
     vectorPts:[],vectorClosed:false,vectorFill:false,
     vectorStroke:'#ffffff',vectorFillColor:'rgba(255,255,255,0.3)',
     vectorStrokeWidth:2,vectorSmooth:false,vectorEditMode:false,
+    // malha 3D (wireframe paramétrico)
+    meshForm:'well', meshDensity:26, meshLineWidth:1.2,
+    meshRotX:62, meshRotY:0, meshRotZ:0, meshPersp:35,
+    meshColorMode:'depth', meshLineColor:'#9fe8ff', meshGlow:30,
   },over);
 }
 
@@ -1354,6 +1359,50 @@ function drawGrid(oc,L,cw,ch){
   }
   oc.restore();
 }
+// ═══ MALHA 3D (wireframe paramétrico) ════════════════════════════════════════
+const MESH_FORMS={
+  well:(u,v)=>{const x=(u-.5)*2,z=(v-.5)*2,r=Math.hypot(x,z);return{x,y:-0.95/(1+r*r*5)+0.18,z};},
+  saddle:(u,v)=>{const x=(u-.5)*2,z=(v-.5)*2;return{x,y:(x*x-z*z)*0.55,z};},
+  wave:(u,v)=>{const x=(u-.5)*2,z=(v-.5)*2;return{x,y:0.32*Math.sin(u*Math.PI*3)*Math.sin(v*Math.PI*2),z};},
+  ripple:(u,v)=>{const x=(u-.5)*2,z=(v-.5)*2,r=Math.hypot(x,z);return{x,y:0.5*Math.cos(r*Math.PI*2.4)/(1+r*2),z};},
+  dome:(u,v)=>{const a=u*Math.PI*2,p=v*Math.PI*0.5,c=Math.cos(p);return{x:Math.cos(a)*c,y:Math.sin(p)-0.25,z:Math.sin(a)*c};},
+  sphere:(u,v)=>{const a=u*Math.PI*2,p=v*Math.PI,s=Math.sin(p);return{x:Math.cos(a)*s,y:Math.cos(p),z:Math.sin(a)*s};},
+  torus:(u,v)=>{const a=u*Math.PI*2,b=v*Math.PI*2,R=0.68,r=0.3;return{x:(R+r*Math.cos(b))*Math.cos(a),y:r*Math.sin(b),z:(R+r*Math.cos(b))*Math.sin(a)};},
+  hourglass:(u,v)=>{const a=u*Math.PI*2,t=v*2-1,rad=0.3+t*t*0.78;return{x:rad*Math.cos(a),y:t*1.05,z:rad*Math.sin(a)};},
+  funnel:(u,v)=>{const a=u*Math.PI*2,t=v,rad=0.1+t*t*1.05,y=-0.9+t*1.7;return{x:rad*Math.cos(a),y,z:rad*Math.sin(a)};},
+  drop:(u,v)=>{const a=u*Math.PI*2,p=v*Math.PI,rad=Math.sin(p)*(1-p/Math.PI)*1.5;return{x:rad*Math.cos(a),y:Math.cos(p)*1.1,z:rad*Math.sin(a)};},
+  cone:(u,v)=>{const a=u*Math.PI*2,t=v;return{x:(1-t)*Math.cos(a),y:t*1.5-0.75,z:(1-t)*Math.sin(a)};},
+  spiral:(u,v)=>{const a=u*Math.PI*2*4,rr=u*1.05,t=v;return{x:rr*Math.cos(a),y:(t-0.5)*0.14,z:rr*Math.sin(a)};},
+};
+function mRot(x,y,z,rx,ry,rz){
+  let c=Math.cos(rx),s=Math.sin(rx);let y1=y*c-z*s,z1=y*s+z*c;y=y1;z=z1;
+  c=Math.cos(ry);s=Math.sin(ry);let x1=x*c+z*s,z2=-x*s+z*c;x=x1;z=z2;
+  c=Math.cos(rz);s=Math.sin(rz);let x2=x*c-y*s,y2=x*s+y*c;x=x2;y=y2;
+  return [x,y,z];
+}
+function drawMesh(oc,L,cw,ch){
+  const exportScale=cw/DESIGN_W;
+  const N=Math.max(6,Math.min(70,Math.round(L.meshDensity||26)));
+  const form=MESH_FORMS[L.meshForm]||MESH_FORMS.well;
+  const cx=(L.posX/100)*cw, cy=(L.posY/100)*ch;
+  const R=Math.min(cw,ch)*0.42*(Math.max(L.sizeX,L.sizeY)/100);
+  const rx=(L.meshRotX||0)*Math.PI/180, ry=(L.meshRotY||0)*Math.PI/180, rz=(L.meshRotZ||0)*Math.PI/180;
+  const persp=(L.meshPersp||0)/100;
+  const lw=Math.max(.4,(L.meshLineWidth||1)*exportScale);
+  const P=[]; let zmin=1e9,zmax=-1e9;
+  for(let i=0;i<=N;i++){const row=[];for(let j=0;j<=N;j++){const o=form(i/N,j/N);const p=mRot(o.x,o.y,o.z,rx,ry,rz);if(p[2]<zmin)zmin=p[2];if(p[2]>zmax)zmax=p[2];row.push(p);}P.push(row);}
+  const dz=(zmax-zmin)||1, f=3.4;
+  const proj=p=>{const sc=f/(f-p[2]*persp*1.6);return [cx+p[0]*R*sc, cy-p[1]*R*sc];};
+  const mc=document.createElement('canvas');mc.width=cw;mc.height=ch;const m=mc.getContext('2d');
+  m.lineWidth=lw;m.lineCap='round';m.lineJoin='round';
+  const cols=(L.colors&&L.colors.length)?L.colors:['#9fe8ff'];
+  const segCol=(za,zb)=>{ if(L.meshColorMode==='flat')return L.meshLineColor||'#9fe8ff'; const t=Math.max(0,Math.min(1,((za+zb)/2-zmin)/dz));const[r,g,b]=interpColor(cols,t);return `rgb(${r|0},${g|0},${b|0})`; };
+  const seg=(a,b)=>{const pa=proj(a),pb=proj(b);m.strokeStyle=segCol(a[2],b[2]);m.beginPath();m.moveTo(pa[0],pa[1]);m.lineTo(pb[0],pb[1]);m.stroke();};
+  for(let i=0;i<=N;i++)for(let j=0;j<=N;j++){ if(i<N)seg(P[i][j],P[i+1][j]); if(j<N)seg(P[i][j],P[i][j+1]); }
+  const glow=(L.meshGlow||0);
+  if(glow>0){const blur=Math.max(1,glow/100*0.022*Math.min(cw,ch));const bf=document.createElement('canvas');bf.width=cw;bf.height=ch;const bx=bf.getContext('2d');bx.filter='blur('+blur+'px)';bx.drawImage(mc,0,0);oc.globalCompositeOperation='lighter';oc.globalAlpha=Math.min(1,glow/100*1.2);oc.drawImage(bf,0,0);oc.globalAlpha=1;oc.globalCompositeOperation='source-over';}
+  oc.drawImage(mc,0,0);
+}
 function getGridDispMap(L,cw,ch){
   const exportScale=cw/DESIGN_W;
   const sz=Math.max(2,(L.gridSize||20)*exportScale);
@@ -1540,6 +1589,7 @@ function drawLayerToCanvas(L,cw,ch){
     else if(L.type==='caustic')drawCaustic(oc,L,cw,ch);
     else if(L.type==='perlin')drawPerlin(oc,L,cw,ch);
     else if(L.type==='grid')drawGrid(oc,L,cw,ch);
+    else if(L.type==='mesh')drawMesh(oc,L,cw,ch);
     else if(L.type==='vector')drawVector(oc,L,cw,ch);
     else if(L.type==='noise'){
       const id=oc.createImageData(cw,ch);const d=id.data;
@@ -1771,7 +1821,7 @@ const svgNS='http://www.w3.org/2000/svg';
 function updateHOv(){
   const svg=el('hSvg');svg.innerHTML='';
   if(dMode!=='off'||!handlesVisible)return;
-  const L=layers.find(l=>l.id===activeId);if(!L||L.locked||['noise','grid','caustic','perlin'].includes(L.type))return;
+  const L=layers.find(l=>l.id===activeId);if(!L||L.locked||['noise','grid','caustic','perlin','mesh'].includes(L.type))return;
   const cw=canvas.width,ch=canvas.height;
   const cx=(L.posX/100)*cw,cy=(L.posY/100)*ch;
   const rx=(L.sizeX/100)*cw*.36,ry=(L.sizeY/100)*ch*.36;
@@ -2093,6 +2143,7 @@ function addLayer(type){
   if(type==='grid'){L.blend='source-over';L.opacity=12;L.gridColor='#ffffff';}
   if(type==='perlin'){L.blend='multiply';L.opacity=60;L.perlinColor1='#001828';L.perlinColor2='#80e8f8';}
   if(type==='vector'){L.blend='source-over';L.opacity=100;L.vectorStroke='#ffffff';L.vectorStrokeWidth=2;}
+  if(type==='mesh'){L.blend='screen';L.opacity=100;L.colors=['#2050a0','#40c0e0','#c0f4ff'];L.sizeX=70;L.sizeY=70;}
   layers.push(L);activeId=L.id;renderList();render();updateHOv();
 }
 function addImageLayer(input){
@@ -2533,6 +2584,35 @@ function buildControls(L){
     ${needsPos?sl(id,`pyvv${id}`,'posY',id,-30,130,L.posY,'Centro Y'):''}
     ${colPicker('gridColor',id,L.gridColor||'#ffffff','Cor')}
     ${buildDispTargets(L)}`;
+  }
+
+  if(L.type==='mesh'){
+    const forms=[['well','Poço'],['saddle','Sela'],['wave','Ondas'],['ripple','Ondas radiais'],['dome','Cúpula'],['sphere','Esfera'],['torus','Toro'],['hourglass','Ampulheta'],['funnel','Funil'],['drop','Gota'],['cone','Cone'],['spiral','Espiral']];
+    const fOpts=forms.map(([v,lb])=>`<option value="${v}"${(L.meshForm||'well')===v?' selected':''}>${lb}</option>`).join('');
+    const cm=L.meshColorMode||'depth';
+    const cmOpts=[['depth','Gradiente (profundidade)'],['flat','Cor única']].map(([v,lb])=>`<option value="${v}"${cm===v?' selected':''}>${lb}</option>`).join('');
+    return common+`
+    <div class="dv"></div>
+    <div class="ir"><span class="il il2">Forma</span><select onchange="LP(${id},'meshForm',this.value);render()">${fOpts}</select></div>
+    ${sl(id,`mds${id}`,'meshDensity',id,6,60,L.meshDensity||26,'Densidade')}
+    ${sl(id,`mlw${id}`,'meshLineWidth',id,1,6,L.meshLineWidth||1.2,'Espessura')}
+    ${sl(id,`mgl${id}`,'meshGlow',id,0,100,L.meshGlow||0,'Glow / Aura')}
+    <div class="dv"></div>
+    <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Vista 3D</div>
+    ${sl(id,`mrx${id}`,'meshRotX',id,-90,90,L.meshRotX||0,'Rotação X','°')}
+    ${sl(id,`mry${id}`,'meshRotY',id,0,360,L.meshRotY||0,'Rotação Y','°')}
+    ${sl(id,`mrz${id}`,'meshRotZ',id,0,360,L.meshRotZ||0,'Rotação Z','°')}
+    ${sl(id,`mps${id}`,'meshPersp',id,0,100,L.meshPersp||0,'Perspetiva')}
+    <div class="dv"></div>
+    ${sl(id,`sxvv${id}`,'sizeX',id,2,300,L.sizeX,'Tamanho')}
+    ${sl(id,`pxvv${id}`,'posX',id,-30,130,L.posX,'Pos X')}
+    ${sl(id,`pyvv${id}`,'posY',id,-30,130,L.posY,'Pos Y')}
+    <div class="dv"></div>
+    <div class="ir"><span class="il il2">Cor</span><select onchange="LP(${id},'meshColorMode',this.value);renderList();render()">${cmOpts}</select></div>
+    ${cm==='flat'?colPicker('meshLineColor',id,L.meshLineColor||'#9fe8ff','Cor linha'):`
+    <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin:4px 0 5px">Gradiente (frente → fundo)</div>
+    <div id="cs${id}" class="cst"></div>
+    <canvas id="gb${id}" class="gb" height="5"></canvas>`}`;
   }
 
   return common;
