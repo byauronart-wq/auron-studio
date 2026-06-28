@@ -379,7 +379,7 @@
     }
     // 2.5) ESPESSURA do acrílico (~5mm) — a aba lateral da placa, atrás da face frontal
     if(hasPanel && MK.thickness>0){
-      const t=Math.max(2,(MK.thickness/100)*0.03*mn);            // espessura em px
+      const t=Math.max(3,(MK.thickness/100)*0.045*mn);           // espessura em px (mais presente)
       const ang=(MK.shadowAngle||135)*Math.PI/180;                // mesma direção da luz
       const tdx=Math.cos(ang), tdy=Math.sin(ang);
       const steps=Math.max(5,Math.round(t));
@@ -541,9 +541,39 @@
   function buildFrontCanvas(){
     const [fw,fh]=frontDims();
     const c=document.createElement('canvas');c.width=fw;c.height=fh;const x=c.getContext('2d');
-    const img=MK.finished||MK.masked;
-    if(img){ const s=Math.min(fw/img.width,fh/img.height)*0.92, w=img.width*s,h=img.height*s; x.drawImage(img,(fw-w)/2,(fh-h)/2,w,h); }
-    return c; // fundo transparente
+    const img=MK.finished||MK.masked; if(!img) return c;
+    const mn=Math.min(fw,fh);
+    const s=Math.min(fw/img.width,fh/img.height)*0.84, w=img.width*s,h=img.height*s, dx=(fw-w)/2, dy=(fh-h)/2;
+    const ang=(MK.shadowAngle||135)*Math.PI/180, adx=Math.cos(ang), ady=Math.sin(ang);
+    // sombra suave (a placa flutua na grelha do site)
+    if(MK.shadow>0){
+      const st=Math.max(6,(MK.shadowSize/100)*0.05*mn);
+      const sh=document.createElement('canvas');sh.width=fw;sh.height=fh;const sx=sh.getContext('2d');
+      sx.drawImage(img,dx+adx*st*0.5,dy+ady*st*0.6,w,h); sx.globalCompositeOperation='source-in';sx.fillStyle='#000';sx.fillRect(0,0,fw,fh);
+      const b=document.createElement('canvas');b.width=fw;b.height=fh;const bx=b.getContext('2d');bx.filter='blur('+st+'px)';bx.drawImage(sh,0,0);
+      bx.filter='none';bx.globalCompositeOperation='destination-out';bx.drawImage(img,dx,dy,w,h);
+      x.globalAlpha=Math.min(.42,MK.shadow/100*0.42);x.drawImage(b,0,0);x.globalAlpha=1;
+    }
+    // ESPESSURA do acrílico (aba lateral)
+    if(MK.thickness>0){
+      const t=Math.max(3,(MK.thickness/100)*0.045*mn), steps=Math.max(5,Math.round(t));
+      const ed=document.createElement('canvas');ed.width=fw;ed.height=fh;const ex=ed.getContext('2d');
+      for(let k=1;k<=steps;k++){const f=k/steps;ex.drawImage(img,dx+adx*t*f,dy+ady*t*f,w,h);}
+      ex.globalCompositeOperation='source-atop';ex.fillStyle='rgba(8,10,16,.5)';ex.fillRect(0,0,fw,fh);
+      ex.globalCompositeOperation='destination-out';ex.drawImage(img,dx,dy,w,h);ex.globalCompositeOperation='source-over';
+      x.globalAlpha=.92;x.drawImage(ed,0,0);x.globalAlpha=1;
+    }
+    // face frontal
+    x.drawImage(img,dx,dy,w,h);
+    // lip frontal claro
+    if(MK.thickness>0){
+      const lo=Math.max(1.5,(MK.thickness/100)*0.045*mn*0.12);
+      const lip=document.createElement('canvas');lip.width=fw;lip.height=fh;const lx=lip.getContext('2d');
+      lx.drawImage(img,dx,dy,w,h); lx.globalCompositeOperation='destination-out'; lx.drawImage(img,dx-adx*lo,dy-ady*lo,w,h);
+      lx.globalCompositeOperation='source-atop'; lx.fillStyle='rgba(255,255,255,.5)'; lx.fillRect(0,0,fw,fh);
+      x.globalCompositeOperation='lighter'; x.globalAlpha=.6; x.drawImage(lip,0,0); x.globalAlpha=1; x.globalCompositeOperation='source-over';
+    }
+    return c; // fundo transparente, com slab + sombra
   }
   // DETAIL: close-up do canto inferior-direito da placa (borda/translucidez)
   function buildDetailCanvas(){
