@@ -17,7 +17,7 @@
     mask:'rect', maskRadius:0, finished:null,
     finish:'none',          // acabamento: none | acrylic | lightbox
     fillPanel:false, domColor:'rgb(210,210,210)',   // preencher placa com a cor da arte
-    spill:0, shadow:0, shadowAngle:135, reflect:0,  // V5 realismo: derrame, sombra, reflexo
+    spill:0, shadow:0, shadowSize:35, shadowAngle:135, reflect:0,  // V5 realismo
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null, selected:false,
@@ -131,10 +131,11 @@
     const w=MK.masked.width,h=MK.masked.height, mn=Math.min(w,h);
     const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
 
-    // 1) CORPO da placa (sob tudo): cor da arte (preencher) ou frosted branco translúcido
+    // 1) CORPO da placa (sob tudo): cor da arte (opcional) ou vidro quase impercetível
+    //    — mantém o DESIGN fiel: a base é mínima, não lava a arte
     x.drawImage(MK.shapeMask,0,0); x.globalCompositeOperation='source-in';
     if(MK.fillPanel){ x.globalAlpha=0.92; x.fillStyle=MK.domColor||'#cccccc'; x.fillRect(0,0,w,h); x.globalAlpha=1; }
-    else { x.fillStyle='rgba(246,248,251,.20)'; x.fillRect(0,0,w,h); }
+    else { x.fillStyle='rgba(248,250,252,.05)'; x.fillRect(0,0,w,h); } // vidro translúcido subtil
     x.globalCompositeOperation='source-over';
     // 2) glow interior (lightbox) — antes da arte
     if(MK.finish==='lightbox'){
@@ -142,31 +143,15 @@
       gx.filter='blur('+Math.max(2,Math.round(mn*0.04))+'px)'; gx.drawImage(MK.masked,0,0);
       x.globalCompositeOperation='screen'; x.drawImage(g,0,0); x.globalCompositeOperation='source-over';
     }
-    // 3) a ARTE
+    // 3) a ARTE (fiel)
     x.drawImage(MK.masked,0,0);
-    if(MK.finish==='lightbox'){ x.globalCompositeOperation='source-atop'; x.fillStyle='rgba(255,250,235,.12)'; x.fillRect(0,0,w,h); x.globalCompositeOperation='source-over'; }
+    if(MK.finish==='lightbox'){ x.globalCompositeOperation='source-atop'; x.fillStyle='rgba(255,250,235,.10)'; x.fillRect(0,0,w,h); x.globalCompositeOperation='source-over'; }
 
-    // ── camadas de VIDRO comuns a acrylic/lightbox, recortadas à forma ──
+    // 4) BORDA/bisel do acrílico — clipado à forma (só metade interior → sem franja na parede)
     x.save(); shapePath(x,w,h); x.clip();
-    // reflexo de vidro: faixa especular diagonal definida (como reflexo de janela)
-    const spec=MK.finish==='acrylic'?1:0.6;
-    const lg=x.createLinearGradient(0,0,w*0.85,h);
-    lg.addColorStop(0.00,'rgba(255,255,255,0)');
-    lg.addColorStop(0.30,'rgba(255,255,255,0)');
-    lg.addColorStop(0.42,'rgba(255,255,255,'+(0.20*spec)+')');
-    lg.addColorStop(0.50,'rgba(255,255,255,'+(0.34*spec)+')');
-    lg.addColorStop(0.58,'rgba(255,255,255,'+(0.20*spec)+')');
-    lg.addColorStop(0.70,'rgba(255,255,255,0)');
-    x.globalCompositeOperation='lighter'; x.fillStyle=lg; x.fillRect(0,0,w,h);
-    // brilho suave no canto superior
-    const cg=x.createLinearGradient(0,0,0,h*0.5);
-    cg.addColorStop(0,'rgba(255,255,255,'+(0.10*spec)+')'); cg.addColorStop(1,'rgba(255,255,255,0)');
-    x.fillStyle=cg; x.fillRect(0,0,w,h);
-    x.restore();
-    // 3) BORDA de acrílico — halo claro + linha interior escura nítida (define a placa)
-    x.save(); shapePath(x,w,h);
-    x.lineWidth=Math.max(3,mn*0.016); x.strokeStyle='rgba(255,255,255,.34)'; x.stroke();
-    x.lineWidth=Math.max(1.5,mn*0.006); x.strokeStyle='rgba(0,0,0,.30)'; x.stroke();
+    // bisel claro fino no interior do contorno + linha escura mais fina (canto de vidro)
+    shapePath(x,w,h); x.lineWidth=Math.max(2,mn*0.012); x.strokeStyle='rgba(255,255,255,.22)'; x.stroke();
+    shapePath(x,w,h); x.lineWidth=Math.max(1,mn*0.004); x.strokeStyle='rgba(0,0,0,.22)'; x.stroke();
     x.restore();
     MK.finished=c;
   }
@@ -184,8 +169,34 @@
   };
   window.mockSetSpill=function(v){ mkSnapshot(); MK.spill=+v; $('mkSpillV').textContent=Math.round(v); renderMock(); };
   window.mockSetShadow=function(v){ mkSnapshot(); MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
+  window.mockSetShadowSize=function(v){ mkSnapshot(); MK.shadowSize=+v; $('mkShSizeV').textContent=Math.round(v); renderMock(); };
   window.mockSetShadowAngle=function(v){ mkSnapshot(); MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
   window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
+  window.mockRotate90=function(){
+    if(!MK.design) return; mkSnapshot(true);
+    if(MK.persp&&MK.quad){ const c=centroid(MK.quad); MK.quad=MK.quad.map(p=>({x:c.x-(p.y-c.y), y:c.y+(p.x-c.x)})); }
+    else { MK.rot+=Math.PI/2; }
+    syncAllUI(); renderMock();
+  };
+  window.mockFlipH=function(){ // espelhar na horizontal — útil p/ trocar o lado da vista lateral
+    if(!MK.design) return; mkSnapshot(true);
+    if(!MK.persp){ MK.persp=true; MK.quad=designCorners(); }
+    const c=centroid(MK.quad); MK.quad=MK.quad.map(p=>({x:2*c.x-p.x, y:p.y}));
+    // repõe a ordem dos cantos [TL,TR,BR,BL] após o espelho
+    MK.quad=[MK.quad[1],MK.quad[0],MK.quad[3],MK.quad[2]];
+    syncAllUI(); renderMock();
+  };
+  // vista lateral rápida: encolhe um lado da placa (perspetiva 3/4)
+  window.mockSideView=function(dir){
+    if(!MK.design) return; mkSnapshot(true);
+    if(!MK.persp||!MK.quad){ MK.persp=true; MK.quad=designCorners(); }
+    const c=centroid(MK.quad), k=0.62;
+    // encolhe verticalmente os 2 cantos do lado escolhido (dir: 'l' encolhe esquerda, 'r' direita)
+    const idx = dir==='l'?[0,3]:[1,2];
+    idx.forEach(i=>{ MK.quad[i]={x:MK.quad[i].x, y:c.y+(MK.quad[i].y-c.y)*k}; });
+    $('mkPerspBtn').classList.add('on'); $('mkPerspBtn').textContent='Perspetiva: ON';
+    syncAllUI(); renderMock();
+  };
   window.mockToggleFill=function(){ mkSnapshot(true); MK.fillPanel=!MK.fillPanel; buildFinished(); const b=$('mkFillBtn'); if(b){b.classList.toggle('on',MK.fillPanel); b.textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa';} renderMock(); };
   window.mockSetOrient=function(v){ MK.orient=v; };
   window.mockSetSize=function(v){ MK.size=v; $('mkCustomRow').style.display=(v==='custom')?'':'none'; };
@@ -193,7 +204,7 @@
   // sincroniza TODA a UI a partir do estado MK (usado no undo e ao aplicar template)
   function syncAllUI(){
     setUI('mkOpacity',Math.round(MK.opacity*100)); setUI('mkScale',Math.round(MK.scaleMul*100)); setUI('mkRot',Math.round(MK.rot*180/Math.PI));
-    setUI('mkRadius',MK.maskRadius); setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkShAng',MK.shadowAngle); setUI('mkReflect',MK.reflect);
+    setUI('mkRadius',MK.maskRadius); setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkShSize',MK.shadowSize); setUI('mkShAng',MK.shadowAngle); setUI('mkReflect',MK.reflect);
     if($('mkBlend'))$('mkBlend').value=MK.blend; if($('mkMask'))$('mkMask').value=MK.mask; if($('mkFinish'))$('mkFinish').value=MK.finish;
     if($('mkOrient'))$('mkOrient').value=MK.orient; if($('mkSize'))$('mkSize').value=MK.size;
     if($('mkRadiusRow'))$('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
@@ -202,7 +213,7 @@
   }
   // ── UNDO (Ctrl/Cmd+Z, só na aba Mockups) ──────────────────────────────────────
   let _undo=[], _lastSnap=0;
-  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,spill:MK.spill,shadow:MK.shadow,shadowAngle:MK.shadowAngle,reflect:MK.reflect}); }
+  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect}); }
   function mkSnapshot(force){ if(!MK.design)return; const now=Date.now(); if(!force && now-_lastSnap<600) return; _lastSnap=now; _undo.push(mkSerial()); if(_undo.length>60)_undo.shift(); }
   window.mockUndo=function(){ if(!_undo.length) return; const s=JSON.parse(_undo.pop()); Object.assign(MK,s); if(MK.quad)MK.quad=MK.quad.map(p=>({x:p.x,y:p.y})); buildMasked(); syncAllUI(); MK.selected=true; renderMock(); };
 
@@ -337,15 +348,19 @@
     // silhueta para a sombra: se há acabamento (placa física), usa o RETÂNGULO da placa; senão a arte
     const hasPanel=(MK.finish&&MK.finish!=='none'&&MK.shapeMask);
     const shadowSilh=hasPanel?renderShapeLayer(w,h,ratio):layer;
-    // 1) SOMBRA de contacto / afastamento (peça → ambiente)
+    // 1) SOMBRA (peça → ambiente) — INTENSIDADE (escuridão) e TAMANHO (área) independentes
     if(full && MK.shadow>0){
+      const sz=(MK.shadowSize!=null?MK.shadowSize:35)/100;
       const sh=document.createElement('canvas');sh.width=w;sh.height=h;const sx=sh.getContext('2d');
       sx.drawImage(shadowSilh,0,0); sx.globalCompositeOperation='source-in'; sx.fillStyle='#000'; sx.fillRect(0,0,w,h);
-      const ang=(MK.shadowAngle||135)*Math.PI/180, off=(0.015+0.07*(MK.shadow/100))*mn; // afastamento da parede
-      const blur=Math.max(4,(0.02+0.055*(MK.shadow/100))*mn);
+      const ang=(MK.shadowAngle||135)*Math.PI/180, off=(0.004+0.07*sz)*mn;  // tamanho → afastamento
+      const blur=Math.max(1.5,(0.004+0.06*sz)*mn);                          // tamanho → desfoque
       const b=document.createElement('canvas');b.width=w;b.height=h;const bx=b.getContext('2d');
       bx.filter='blur('+blur+'px)'; bx.drawImage(sh,Math.cos(ang)*off,Math.sin(ang)*off);
-      ctx2.globalAlpha=Math.min(.8,MK.shadow/100*0.8); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
+      // recorta a área da placa → a sombra só aparece ATRÁS/à volta (não através do vidro transparente)
+      bx.filter='none'; bx.globalCompositeOperation='destination-out'; bx.drawImage(shadowSilh,0,0);
+      // intensidade → opacidade (até bem escuro p/ sombras fortes e pequenas)
+      ctx2.globalAlpha=Math.min(.95,MK.shadow/100*0.95); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
     }
     // 2) DERRAME de luz / halo colorido (peça → ambiente) — contido, não "projetor"
     if(full && MK.spill>0){
@@ -358,13 +373,28 @@
     // 3) a PEÇA (com blend/opacidade do utilizador)
     ctx2.globalAlpha=MK.opacity; ctx2.globalCompositeOperation=MK.blend; ctx2.drawImage(layer,0,0);
     ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
-    // 4) REFLEXO do ambiente no acrílico (ambiente → peça)
+    // 4) REFLEXO espelhado do ambiente no acrílico (ambiente → peça) — vidro brilhante, não baço
     if(full && MK.reflect>0 && MK.scene){
+      const panelA=hasPanel?renderShapeLayer(w,h,ratio):layer; // recorte = placa toda
       const r=document.createElement('canvas');r.width=w;r.height=h;const rx=r.getContext('2d');
-      rx.filter='blur('+Math.max(2,0.012*mn)+'px)'; rx.drawImage(MK.scene,0,0,w,h);
-      rx.filter='none'; rx.globalCompositeOperation='destination-in'; rx.drawImage(layer,0,0);
-      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=MK.reflect/100*0.5; ctx2.drawImage(r,0,0);
+      // reflexo da sala (pouco desfoque = mais espelhado), invertido na vertical como um reflexo real
+      rx.save(); rx.translate(0,h); rx.scale(1,-1); rx.filter='blur('+Math.max(1,0.006*mn)+'px)'; rx.drawImage(MK.scene,0,0,w,h); rx.restore();
+      rx.filter='none';
+      // concentra o reflexo no TOPO (vidro a apanhar luz de cima) → não lava a peça toda
+      rx.globalCompositeOperation='destination-in';
+      const gm=rx.createLinearGradient(0,0,0,h); gm.addColorStop(0,'rgba(255,255,255,1)'); gm.addColorStop(.45,'rgba(255,255,255,.35)'); gm.addColorStop(1,'rgba(255,255,255,.06)');
+      rx.fillStyle=gm; rx.fillRect(0,0,w,h);
+      rx.globalCompositeOperation='destination-in'; rx.drawImage(panelA,0,0); rx.globalCompositeOperation='source-over';
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(.9,MK.reflect/100*0.9); ctx2.drawImage(r,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+      // realce especular nítido (mancha de luz do vidro) — escala com o reflexo
+      const sp=document.createElement('canvas');sp.width=w;sp.height=h;const spx=sp.getContext('2d');
+      spx.drawImage(panelA,0,0); spx.globalCompositeOperation='source-in';
+      const sg=spx.createLinearGradient(0,0,w*0.8,h);
+      sg.addColorStop(.34,'rgba(255,255,255,0)'); sg.addColorStop(.46,'rgba(255,255,255,'+(0.5*MK.reflect/100)+')');
+      sg.addColorStop(.52,'rgba(255,255,255,'+(0.5*MK.reflect/100)+')'); sg.addColorStop(.64,'rgba(255,255,255,0)');
+      spx.fillStyle=sg; spx.fillRect(0,0,w,h);
+      ctx2.globalCompositeOperation='lighter'; ctx2.drawImage(sp,0,0); ctx2.globalCompositeOperation='source-over';
     }
   }
   window.renderMock=function(){
@@ -379,6 +409,14 @@
     o.clearRect(0,0,MK.cw,MK.ch);
     if(!MK.design||!MK.active||!MK.selected) return;
     const c=currentCorners(); const k=1/(viewScale()||1);
+    // GUIAS de perspetiva: prolonga as arestas da placa por toda a tela (alinhar com a parede)
+    if(MK.persp){
+      o.save(); o.lineWidth=1*k; o.strokeStyle='rgba(120,200,255,.28)'; o.setLineDash([2*k,6*k]);
+      const ext=(a,b)=>{ const dx=b.x-a.x,dy=b.y-a.y,L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L,F=Math.max(MK.cw,MK.ch);
+        o.beginPath();o.moveTo(a.x-ux*F,a.y-uy*F);o.lineTo(b.x+ux*F,b.y+uy*F);o.stroke(); };
+      ext(c[0],c[1]); ext(c[3],c[2]); ext(c[0],c[3]); ext(c[1],c[2]); // 2 horizontais + 2 verticais
+      o.restore();
+    }
     o.lineWidth=1.5*k; o.strokeStyle=MK.persp?'rgba(255,180,90,.95)':'rgba(90,172,200,.9)'; o.setLineDash([5*k,4*k]);
     o.beginPath();o.moveTo(c[0].x,c[0].y);for(let i=1;i<4;i++)o.lineTo(c[i].x,c[i].y);o.closePath();o.stroke();
     o.setLineDash([]);
@@ -542,7 +580,7 @@
       scene:sceneToDataURL(), nativeW:MK.nativeW, nativeH:MK.nativeH,
       quadN, mask:MK.mask, maskRadius:MK.maskRadius, blend:MK.blend, opacity:MK.opacity,
       finish:MK.finish, fillPanel:MK.fillPanel, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
-      spill:MK.spill, shadow:MK.shadow, shadowAngle:MK.shadowAngle, reflect:MK.reflect,
+      spill:MK.spill, shadow:MK.shadow, shadowSize:MK.shadowSize, shadowAngle:MK.shadowAngle, reflect:MK.reflect,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
   };
@@ -560,7 +598,7 @@
       $('mkEmpty').style.display='none';
       MK.mask=t.mask; MK.maskRadius=(t.maskRadius!=null?t.maskRadius:0); MK.blend=t.blend; MK.opacity=(t.opacity!=null?t.opacity:1);
       MK.finish=t.finish||'none'; MK.fillPanel=!!t.fillPanel; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
-      MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
+      MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowSize=(t.shadowSize!=null?t.shadowSize:35); MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
@@ -570,7 +608,7 @@
       if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
-      [['mkSpill','spill'],['mkShadow','shadow'],['mkShAng','shadowAngle'],['mkReflect','reflect']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
       syncProps(); fitView(); renderMock(); mockCloseLib();
     };
     img.src=t.scene;
