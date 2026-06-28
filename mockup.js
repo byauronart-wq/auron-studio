@@ -19,6 +19,7 @@
     fillPanel:false, domColor:'rgb(210,210,210)',   // preencher placa com a cor da arte
     spill:0, shadow:0, shadowSize:35, shadowAngle:135, reflect:0,  // V5 realismo
     translucency:20, reflectAngle:135, glassFrost:false,           // vidro translúcido
+    thickness:30,                                                  // espessura do acrílico (5mm look)
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null, selected:false,
@@ -170,6 +171,7 @@
   };
   window.mockSetTranslucency=function(v){ mkSnapshot(); MK.translucency=+v; $('mkTranslV').textContent=Math.round(v); renderMock(); };
   window.mockSetReflectAngle=function(v){ mkSnapshot(); MK.reflectAngle=+v; $('mkRefAngV').textContent=Math.round(v); renderMock(); };
+  window.mockSetThickness=function(v){ mkSnapshot(); MK.thickness=+v; $('mkThickV').textContent=Math.round(v); renderMock(); };
   window.mockToggleFrost=function(){ mkSnapshot(true); MK.glassFrost=!MK.glassFrost; buildFinished(); const b=$('mkFrostBtn'); if(b){b.classList.toggle('on',MK.glassFrost);b.textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco';} renderMock(); };
   window.mockSetSpill=function(v){ mkSnapshot(); MK.spill=+v; $('mkSpillV').textContent=Math.round(v); renderMock(); };
   window.mockSetShadow=function(v){ mkSnapshot(); MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
@@ -208,7 +210,7 @@
   // sincroniza TODA a UI a partir do estado MK (usado no undo e ao aplicar template)
   function syncAllUI(){
     setUI('mkOpacity',Math.round(MK.opacity*100)); setUI('mkScale',Math.round(MK.scaleMul*100)); setUI('mkRot',Math.round(MK.rot*180/Math.PI));
-    setUI('mkRadius',MK.maskRadius); setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkShSize',MK.shadowSize); setUI('mkShAng',MK.shadowAngle); setUI('mkReflect',MK.reflect); setUI('mkRefAng',MK.reflectAngle); setUI('mkTransl',MK.translucency);
+    setUI('mkRadius',MK.maskRadius); setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkShSize',MK.shadowSize); setUI('mkShAng',MK.shadowAngle); setUI('mkReflect',MK.reflect); setUI('mkRefAng',MK.reflectAngle); setUI('mkTransl',MK.translucency); setUI('mkThick',MK.thickness);
     if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
     if($('mkBlend'))$('mkBlend').value=MK.blend; if($('mkMask'))$('mkMask').value=MK.mask; if($('mkFinish'))$('mkFinish').value=MK.finish;
     if($('mkOrient'))$('mkOrient').value=MK.orient; if($('mkSize'))$('mkSize').value=MK.size;
@@ -218,7 +220,7 @@
   }
   // ── UNDO (Ctrl/Cmd+Z, só na aba Mockups) ──────────────────────────────────────
   let _undo=[], _lastSnap=0;
-  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,glassFrost:MK.glassFrost,translucency:MK.translucency,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect,reflectAngle:MK.reflectAngle}); }
+  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,glassFrost:MK.glassFrost,translucency:MK.translucency,thickness:MK.thickness,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect,reflectAngle:MK.reflectAngle}); }
   function mkSnapshot(force){ if(!MK.design)return; const now=Date.now(); if(!force && now-_lastSnap<600) return; _lastSnap=now; _undo.push(mkSerial()); if(_undo.length>60)_undo.shift(); }
   window.mockUndo=function(){ if(!_undo.length) return; const s=JSON.parse(_undo.pop()); Object.assign(MK,s); if(MK.quad)MK.quad=MK.quad.map(p=>({x:p.x,y:p.y})); buildMasked(); syncAllUI(); MK.selected=true; renderMock(); };
 
@@ -374,6 +376,26 @@
       gx.filter='blur('+blur+'px)'; gx.drawImage(layer,0,0);
       ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(0.85,MK.spill/100*0.85); ctx2.drawImage(g,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    }
+    // 2.5) ESPESSURA do acrílico (~5mm) — a aba lateral da placa, atrás da face frontal
+    if(hasPanel && MK.thickness>0){
+      const t=Math.max(2,(MK.thickness/100)*0.03*mn);            // espessura em px
+      const ang=(MK.shadowAngle||135)*Math.PI/180;                // mesma direção da luz
+      const tdx=Math.cos(ang), tdy=Math.sin(ang);
+      const steps=Math.max(5,Math.round(t));
+      const ed=document.createElement('canvas');ed.width=w;ed.height=h;const ex=ed.getContext('2d');
+      // empilha cópias deslocadas da face → constrói o lado
+      for(let k=1;k<=steps;k++){ const f=k/steps; ex.globalAlpha=1; ex.drawImage(layer, tdx*t*f, tdy*t*f); }
+      // escurece o lado (vidro de canto) e remove a área da face frontal (fica só a aba)
+      ex.globalCompositeOperation='source-atop'; ex.fillStyle='rgba(8,10,16,.5)'; ex.fillRect(0,0,w,h);
+      ex.globalCompositeOperation='destination-out'; ex.drawImage(layer,0,0);
+      ex.globalCompositeOperation='source-over';
+      ctx2.globalAlpha=0.92; ctx2.drawImage(ed,0,0); ctx2.globalAlpha=1;
+      // lip frontal claro (a aresta da frente a apanhar luz) no lado oposto
+      const lip=document.createElement('canvas');lip.width=w;lip.height=h;const lx=lip.getContext('2d');
+      lx.drawImage(layer,0,0); lx.globalCompositeOperation='destination-out'; lx.drawImage(layer,-tdx*Math.max(1.5,t*0.12),-tdy*Math.max(1.5,t*0.12));
+      lx.globalCompositeOperation='source-atop'; lx.fillStyle='rgba(255,255,255,.5)'; lx.fillRect(0,0,w,h);
+      ctx2.globalCompositeOperation='lighter'; ctx2.globalAlpha=0.6; ctx2.drawImage(lip,0,0); ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 3) a PEÇA — translucidez deixa ver a parede através da cor (mantendo a cor fiel)
     const transl=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
@@ -545,11 +567,20 @@
       const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000); res();
     },'image/png'));
   }
-  // export único (a saída atualmente visível = wall)
+  // export único — mostra a pasta LOGO ao clicar, depois renderiza e grava
   window.mockExport=async function(){
     if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
     const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-    await saveCanvas(buildWallCanvas(), `${MK.sceneName||'mockup'}_wall_${stamp}.png`);
+    const name=`${MK.sceneName||'mockup'}_wall_${stamp}.png`;
+    let fh=null;
+    if(window.showSaveFilePicker){
+      try{ fh=await window.showSaveFilePicker({suggestedName:name,types:[{description:'PNG',accept:{'image/png':['.png']}}],id:'auron-mock',startIn:'desktop'}); }
+      catch(e){ if(e.name==='AbortError') return; }
+    }
+    const cv=buildWallCanvas();
+    const blob=await new Promise(r=>cv.toBlob(r,'image/png'));
+    if(fh){ try{ const w=await fh.createWritable(); await w.write(blob); await w.close(); }catch(e){ alert('Erro ao gravar: '+e.message); } }
+    else { const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000); }
   };
   // exportar conjunto front+wall+detail de uma vez
   window.mockExportSet=async function(){
@@ -587,7 +618,7 @@
     const t={ id:'t'+Date.now(), name, type, created:Date.now(),
       scene:sceneToDataURL(), nativeW:MK.nativeW, nativeH:MK.nativeH,
       quadN, mask:MK.mask, maskRadius:MK.maskRadius, blend:MK.blend, opacity:MK.opacity,
-      finish:MK.finish, fillPanel:MK.fillPanel, glassFrost:MK.glassFrost, translucency:MK.translucency, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
+      finish:MK.finish, fillPanel:MK.fillPanel, glassFrost:MK.glassFrost, translucency:MK.translucency, thickness:MK.thickness, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
       spill:MK.spill, shadow:MK.shadow, shadowSize:MK.shadowSize, shadowAngle:MK.shadowAngle, reflect:MK.reflect, reflectAngle:MK.reflectAngle,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
@@ -607,7 +638,7 @@
       MK.mask=t.mask; MK.maskRadius=(t.maskRadius!=null?t.maskRadius:0); MK.blend=t.blend; MK.opacity=(t.opacity!=null?t.opacity:1);
       MK.finish=t.finish||'none'; MK.fillPanel=!!t.fillPanel; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
       MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowSize=(t.shadowSize!=null?t.shadowSize:35); MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
-      MK.glassFrost=!!t.glassFrost; MK.translucency=(t.translucency!=null?t.translucency:20); MK.reflectAngle=(t.reflectAngle!=null?t.reflectAngle:135);
+      MK.glassFrost=!!t.glassFrost; MK.translucency=(t.translucency!=null?t.translucency:20); MK.reflectAngle=(t.reflectAngle!=null?t.reflectAngle:135); MK.thickness=(t.thickness!=null?t.thickness:30);
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
@@ -617,7 +648,7 @@
       if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
-      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
       if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
       syncProps(); fitView(); renderMock(); mockCloseLib();
     };
