@@ -314,6 +314,7 @@ body.simple .pro{display:none!important}
   </div>
   <div class="tsep"></div>
   <div class="tg">
+    <button class="tb-btn" onclick="newDesign()" title="Novo projeto (limpa as camadas)"><svg class="ico" viewBox="0 0 14 14"><rect x="2" y="1" width="10" height="12" rx="1.5"/><line x1="7" y1="4" x2="7" y2="10"/><line x1="4" y1="7" x2="10" y2="7"/></svg>Novo</button>
     <button class="tb-btn" onclick="saveProject()"><svg class="ico" viewBox="0 0 14 14"><path d="M12 13H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h7l3 3v9a1 1 0 0 1-1 1z"/><rect x="4" y="8" width="6" height="5"/><rect x="4" y="1" width="4" height="3"/></svg>Guardar</button>
     <button class="tb-btn" onclick="el('auronFile').click()"><svg class="ico" viewBox="0 0 14 14"><path d="M13 9v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V9"/><line x1="7" y1="1" x2="7" y2="9"/><polyline points="4,6 7,9 10,6"/></svg>Abrir</button>
     <input type="file" id="auronFile" accept=".auron" style="display:none" onchange="loadProject(this)">
@@ -1488,10 +1489,26 @@ function applyDisplace(targetCanvas,dispData,strength,cw,ch){
   }
   ctx2.putImageData(dst,0,0);
 }
+function getMeshDispMap(L,cw,ch){
+  const m=document.createElement('canvas');m.width=cw;m.height=ch;
+  drawMesh(m.getContext('2d'),{...L,blur:0,meshGlow:0},cw,ch);
+  const src=m.getContext('2d').getImageData(0,0,cw,ch).data;
+  const lum=new Float32Array(cw*ch);
+  for(let i=0,p=0;i<src.length;i+=4,p++) lum[p]=(src[i]*0.3+src[i+1]*0.6+src[i+2]*0.1)*(src[i+3]/255);
+  const d=new Uint8ClampedArray(cw*ch*4);
+  for(let y=0;y<ch;y++)for(let x=0;x<cw;x++){
+    const i=y*cw+x;
+    const gx=((x<cw-1?lum[i+1]:lum[i])-(x>0?lum[i-1]:lum[i]))/255;
+    const gy=((y<ch-1?lum[i+cw]:lum[i])-(y>0?lum[i-cw]:lum[i]))/255;
+    const o=i*4; d[o]=128+gx*255; d[o+1]=128+gy*255; d[o+2]=128; d[o+3]=255;
+  }
+  return d;
+}
 function getDispMap(L,cw,ch){
   if(L.type==='caustic')return getCausticDispMap(L,cw,ch);
   if(L.type==='perlin')return getPerlinDispMap(L,cw,ch);
   if(L.type==='grid')return getGridDispMap(L,cw,ch);
+  if(L.type==='mesh')return getMeshDispMap(L,cw,ch);
   const d=new Uint8ClampedArray(cw*ch*4);for(let i=0;i<d.length;i+=4){const v=Math.random()*255*(L.noise/100);d[i]=v;d[i+1]=v;d[i+2]=128;d[i+3]=255;}return d;
 }
 
@@ -1766,7 +1783,7 @@ function _renderActual(hq){
   // PASS 2: apply displacements
   offs.forEach(item=>{
     const{L}=item;if(!L.displaceEnabled||!L.displaceTargets.length)return;
-    if(!['caustic','perlin','noise','grid'].includes(L.type))return;
+    if(!['caustic','perlin','noise','grid','mesh'].includes(L.type))return;
     const dispMap=getDispMap(L,cw,ch);
     L.displaceTargets.forEach(tid=>{
       const t=offs.find(x=>x.L.id===tid);
@@ -1778,7 +1795,7 @@ function _renderActual(hq){
   offs.forEach(item=>{
     const{L,off}=item;
     // generative layers in displace-only mode are invisible
-    if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid'].includes(L.type))return;
+    if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid','mesh'].includes(L.type))return;
 
     if(L.clipBelow){
       // clipBelow: esta camada usa destination-in num grupo isolado
@@ -2133,6 +2150,11 @@ function selectLayer(id){
 }
 
 // ═══ ADD / REMOVE LAYERS ═════════════════════════════════════════════════════
+function newDesign(){
+  if(layers.length && !confirm('Começar um projeto novo? As camadas atuais serão apagadas.'))return;
+  saveUndo(); layers=[]; activeId=null; if(typeof selectedIds!=='undefined')selectedIds.clear&&selectedIds.clear();
+  renderList();render();updateHOv();
+}
 function addLayer(type){
   saveUndo();const L=mkLayer(type);
   if(type==='blob'){L.colors=['#3060c0','#60c0e0','#c0e8f8'];L.blend='source-over';}
@@ -2597,6 +2619,7 @@ function buildControls(L){
     ${sl(id,`mds${id}`,'meshDensity',id,6,60,L.meshDensity||26,'Densidade')}
     ${sl(id,`mlw${id}`,'meshLineWidth',id,1,6,L.meshLineWidth||1.2,'Espessura')}
     ${sl(id,`mgl${id}`,'meshGlow',id,0,100,L.meshGlow||0,'Glow / Aura')}
+    ${sl(id,`mbl${id}`,'blur',id,0,80,L.blur||0,'Desfoque')}
     <div class="dv"></div>
     <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Vista 3D</div>
     ${sl(id,`mrx${id}`,'meshRotX',id,-90,90,L.meshRotX||0,'Rotação X','°')}
@@ -2612,7 +2635,11 @@ function buildControls(L){
     ${cm==='flat'?colPicker('meshLineColor',id,L.meshLineColor||'#9fe8ff','Cor linha'):`
     <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin:4px 0 5px">Gradiente (frente → fundo)</div>
     <div id="cs${id}" class="cst"></div>
-    <canvas id="gb${id}" class="gb" height="5"></canvas>`}`;
+    <canvas id="gb${id}" class="gb" height="5"></canvas>
+    <div class="ir"><span class="il il2">Preset</span>
+      <select onchange="applyGP(${id},this.value);this.value=''"><option value="">— escolher —</option>${GRAD_P.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
+    </div>`}
+    ${buildDispTargets(L)}`;
   }
 
   return common;
@@ -3070,7 +3097,7 @@ async function exportPNG(){
       }
       for(const item of offs){
         const{L}=item;if(!L.displaceEnabled||!L.displaceTargets.length)continue;
-        if(!['caustic','perlin','noise','grid'].includes(L.type))continue;
+        if(!['caustic','perlin','noise','grid','mesh'].includes(L.type))continue;
         ov.firstChild.textContent=`A RENDERIZAR · deslocamento`;
         await tick();
         const dm=getDispMap(L,pw,ph);
@@ -3078,7 +3105,7 @@ async function exportPNG(){
       }
       offs.forEach(item=>{
         const{L,off}=item;
-        if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid'].includes(L.type))return;
+        if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid','mesh'].includes(L.type))return;
         if(L.clipBelow){
           const snap=document.createElement('canvas');snap.width=pw;snap.height=ph;
           const sc=snap.getContext('2d');sc.drawImage(ex,0,0);
@@ -3450,6 +3477,7 @@ window.addEventListener('keydown',e=>{
 </div>
 <div id="mockView" hidden>
   <div id="mkBar">
+    <button class="mk-b" onclick="mockNew()">＋ Novo</button>
     <button class="mk-b" onclick="document.getElementById('mkSceneInput').click()">Carregar cena</button>
     <button class="mk-b" onclick="mockUseDesign()">Usar design atual</button>
     <button class="mk-b" onclick="document.getElementById('mkDesignInput').click()">Carregar PNG</button>

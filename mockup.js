@@ -23,6 +23,7 @@
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null, selected:false,
+    zoom:1, panX:0, panY:0,                                        // zoom/pan da workspace
   };
   const WORK_MAX = 1600;
   const $ = id => document.getElementById(id);
@@ -46,7 +47,7 @@
       const s=Math.min(1,WORK_MAX/Math.max(img.naturalWidth,img.naturalHeight));
       MK.cw=Math.round(img.naturalWidth*s); MK.ch=Math.round(img.naturalHeight*s);
       $('mockCv').width=MK.cw; $('mockCv').height=MK.ch; $('mockOv').width=MK.cw; $('mockOv').height=MK.ch;
-      $('mkEmpty').style.display='none';
+      $('mkEmpty').style.display='none'; MK.zoom=1;MK.panX=0;MK.panY=0;
       if(MK.design) placeDesignCentered();
       fitView(); renderMock();
     }; img.src=e.target.result; };
@@ -461,10 +462,12 @@
   function viewScale(){ const cv=$('mockCv'); if(!cv||!cv.width) return 1; const r=cv.getBoundingClientRect(); return r.width/cv.width; }
   function fitView(){
     const cv=$('mockCv'),wrap=$('mkWrap'),stage=$('mkStage'); if(!cv||!MK.cw) return;
-    const s=Math.min((stage.clientWidth-40)/MK.cw,(stage.clientHeight-40)/MK.ch,1);
+    const base=Math.min((stage.clientWidth-40)/MK.cw,(stage.clientHeight-40)/MK.ch,1);
+    const s=base*(MK.zoom||1);
     cv.style.width=Math.round(MK.cw*s)+'px'; cv.style.height=Math.round(MK.ch*s)+'px';
     const ov=$('mockOv'); ov.style.width=cv.style.width; ov.style.height=cv.style.height;
     wrap.style.width=cv.style.width; wrap.style.height=cv.style.height;
+    wrap.style.transform='translate('+(MK.panX||0)+'px,'+(MK.panY||0)+'px)';
   }
   window.addEventListener('resize',()=>{ if(MK.active){ fitView(); renderMock(); } });
 
@@ -482,7 +485,14 @@
   function pointInQuad(p,q){ let inside=false; for(let i=0,j=3;i<4;j=i++){ const xi=q[i].x,yi=q[i].y,xj=q[j].x,yj=q[j].y; if(((yi>p.y)!==(yj>p.y))&&(p.x<(xj-xi)*(p.y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
 
   function onDown(e){
-    if(!MK.design) return; const p=evPos(e); let hit=hitTest(p);
+    const p0=evPos(e);
+    // PAN: clicar fora da peça com zoom ativo (ou botão do meio) → arrastar a vista
+    const outside = !MK.design || !hitTest(p0);
+    if(outside && ((MK.zoom||1)>1 || e.button===1)){
+      e.preventDefault(); MK.drag={type:'pan',sx:e.clientX,sy:e.clientY,opx:MK.panX||0,opy:MK.panY||0};
+      $('mockOv').setPointerCapture(e.pointerId); return;
+    }
+    if(!MK.design) return; let hit=hitTest(p0); const p=p0;
     if(!hit){ if(MK.selected){ MK.selected=false; renderMock(); } return; }  // clicar fora → desselecionar
     e.preventDefault();
     if(!MK.selected){ MK.selected=true; hit={type:'move'}; renderMock(); }    // 1º clique só seleciona+move
@@ -493,7 +503,9 @@
     $('mockOv').setPointerCapture(e.pointerId);
   }
   function onMove(e){
-    if(!MK.drag) return; const p=evPos(e),d=MK.drag;
+    if(!MK.drag) return; const d=MK.drag;
+    if(d.type==='pan'){ MK.panX=d.opx+(e.clientX-d.sx); MK.panY=d.opy+(e.clientY-d.sy); fitView(); return; }
+    const p=evPos(e);
     if(d.type==='move'){
       const dx=p.x-d.sx, dy=p.y-d.sy;
       if(MK.persp&&d.quad0){ MK.quad=d.quad0.map(q=>({x:q.x+dx,y:q.y+dy})); }
@@ -510,15 +522,41 @@
     }
     syncProps(); renderMock();
   }
-  function onUp(e){ if(MK.drag){ MK.drag=null; MK.dragging=false; try{$('mockOv').releasePointerCapture(e.pointerId);}catch(_){ } renderMock(); } }
+  function onUp(e){ if(MK.drag){ const wasPan=MK.drag.type==='pan'; MK.drag=null; MK.dragging=false; try{$('mockOv').releasePointerCapture(e.pointerId);}catch(_){ } if(!wasPan)renderMock(); } }
+  // ZOOM da workspace
+  window.mockZoom=function(factor,cxClient,cyClient){
+    const old=MK.zoom||1, nz=Math.max(0.4,Math.min(6, old*factor));
+    if(nz===old) return;
+    // manter o ponto sob o cursor ~fixo
+    if(cxClient!=null){ const wrap=$('mkWrap'); const r=wrap.getBoundingClientRect();
+      const ox=cxClient-(r.left+ (MK.panX||0)*0), oy=cyClient-r.top; // simplificado
+      MK.panX=(MK.panX||0)-((cxClient-(r.left+r.width/2)))*(nz/old-1);
+      MK.panY=(MK.panY||0)-((cyClient-(r.top+r.height/2)))*(nz/old-1);
+    }
+    MK.zoom=nz; fitView();
+  };
+  window.mockResetZoom=function(){ MK.zoom=1; MK.panX=0; MK.panY=0; fitView(); };
   function bindStage(){
     const ov=$('mockOv'); ov.addEventListener('pointerdown',onDown); ov.addEventListener('pointermove',onMove); ov.addEventListener('pointerup',onUp); ov.addEventListener('pointercancel',onUp);
+    const stage=$('mkStage');
+    stage.addEventListener('wheel',e=>{ if(!MK.active||!MK.scene) return; e.preventDefault(); mockZoom(e.deltaY<0?1.12:0.892, e.clientX, e.clientY); },{passive:false});
+    stage.addEventListener('dblclick',e=>{ if(MK.active) mockResetZoom(); });
     // Ctrl/Cmd+Z → desfaz no módulo Mockups (em captura, antes do editor de Design)
     window.addEventListener('keydown',e=>{
       if(!MK.active) return;
       if((e.metaKey||e.ctrlKey)&&!e.shiftKey&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); e.stopPropagation(); mockUndo(); }
     },true);
   }
+  // NOVO mockup — limpa cena/design
+  window.mockNew=function(){
+    if((MK.scene||MK.design) && !confirm('Novo mockup? A cena e o design atuais serão removidos.')) return;
+    MK.scene=null;MK.design=null;MK.masked=null;MK.finished=null;MK.shapeMask=null;
+    MK.persp=false;MK.quad=null;MK.selected=false;MK.zoom=1;MK.panX=0;MK.panY=0;_undo=[];
+    const cv=$('mockCv'),ov=$('mockOv'); if(cv){cv.width=300;cv.height=200;} if(ov){ov.width=300;ov.height=200;}
+    MK.cw=0;MK.ch=0; const e=$('mkEmpty'); if(e)e.style.display='';
+    const ctx2=cv&&cv.getContext('2d'); if(ctx2)ctx2.clearRect(0,0,cv.width,cv.height);
+    const o=ov&&ov.getContext('2d'); if(o)o.clearRect(0,0,ov.width,ov.height);
+  };
 
   // ── composição das 3 saídas (resolução nativa) ──────────────────────────────────
   // WALL: cena + design (perspetiva/máscara/acabamento)
@@ -664,7 +702,7 @@
       const s=Math.min(1,WORK_MAX/Math.max(MK.nativeW,MK.nativeH));
       MK.cw=Math.round(MK.nativeW*s); MK.ch=Math.round(MK.nativeH*s);
       $('mockCv').width=MK.cw;$('mockCv').height=MK.ch;$('mockOv').width=MK.cw;$('mockOv').height=MK.ch;
-      $('mkEmpty').style.display='none';
+      $('mkEmpty').style.display='none'; MK.zoom=1;MK.panX=0;MK.panY=0;
       MK.mask=t.mask; MK.maskRadius=(t.maskRadius!=null?t.maskRadius:0); MK.blend=t.blend; MK.opacity=(t.opacity!=null?t.opacity:1);
       MK.finish=t.finish||'none'; MK.fillPanel=!!t.fillPanel; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
       MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowSize=(t.shadowSize!=null?t.shadowSize:35); MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
