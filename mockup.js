@@ -651,16 +651,37 @@
     else { const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),10000); }
   };
   // exportar conjunto front+wall+detail de uma vez
+  // renderiza a peça atual (mesmo design/acabamento) numa CENA de template, sem mexer no estado visível
+  async function renderWallFromTemplate(t){
+    const img=await new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=t.scene;});
+    if(!img) return null;
+    const snap={scene:MK.scene,sceneName:MK.sceneName,nativeW:MK.nativeW,nativeH:MK.nativeH,cw:MK.cw,ch:MK.ch,persp:MK.persp,quad:MK.quad};
+    MK.scene=img; MK.nativeW=t.nativeW||img.naturalWidth; MK.nativeH=t.nativeH||img.naturalHeight;
+    const s=Math.min(1,WORK_MAX/Math.max(MK.nativeW,MK.nativeH)); MK.cw=Math.round(MK.nativeW*s); MK.ch=Math.round(MK.nativeH*s);
+    MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw,y:p.y*MK.ch}));
+    const cv=buildWallCanvas();
+    Object.assign(MK,snap);
+    return cv;
+  }
   window.mockExportSet=async function(){
-    if(!MK.scene){ alert('Carrega cena/template primeiro.'); return; }
     if(!MK.design){ alert('Traz um design primeiro (Usar design atual / Carregar PNG).'); return; }
     const colid=(prompt('ID da coleção (ex.: atl):','col')||'col').trim();
     const n=(prompt('Número da peça:','1')||'1').trim();
-    const items=[['front',buildFrontCanvas()],['wall',buildWallCanvas()],['detail',buildDetailCanvas()]];
-    if(window.showDirectoryPicker){
-      let dir; try{ dir=await window.showDirectoryPicker({id:'auron-mockset'}); }catch(e){ if(e.name==='AbortError') return; }
+    // template de galeria (tipo gallery, ou wall) → versão galeria automática
+    let galleryT=null;
+    try{ const all=await tplAll(); const g=all.filter(t=>t.type==='gallery'||t.type==='wall').sort((a,b)=>b.created-a.created); galleryT=g[0]||null; }catch(e){}
+    // pasta de destino (logo, antes de renderizar)
+    let dir=null;
+    if(window.showDirectoryPicker){ try{ dir=await window.showDirectoryPicker({id:'auron-mockset'}); }catch(e){ if(e.name==='AbortError') return; } }
+    const items=[];
+    items.push(['front', buildFrontCanvas()]);                  // design sozinho (transparente)
+    if(galleryT){ const gc=await renderWallFromTemplate(galleryT); if(gc) items.push(['gallery', gc]); }
+    if(MK.scene) items.push(['room', buildWallCanvas()]);       // cena atual = divisão/ambiente
+    if(MK.scene) items.push(['detail', buildDetailCanvas()]);
+    // gravar
+    if(dir){
       for(const [tag,cv] of items){ const blob=await new Promise(r=>cv.toBlob(r,'image/png')); const fh=await dir.getFileHandle(`${colid}-${n}-${tag}.png`,{create:true}); const w=await fh.createWritable(); await w.write(blob); await w.close(); }
-      alert('Conjunto exportado: '+colid+'-'+n+'-front/wall/detail.png');
+      alert('Conjunto exportado ('+items.map(i=>i[0]).join(', ')+')'+(galleryT?'':'\n\nDica: guarda um template de tipo "gallery" para a versão de galeria sair automaticamente.'));
     } else {
       for(const [tag,cv] of items){ await saveCanvas(cv, `${colid}-${n}-${tag}.png`); await new Promise(r=>setTimeout(r,250)); }
     }
@@ -681,7 +702,7 @@
   window.mockSaveTemplate=async function(){
     if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
     const name=prompt('Nome do template:', MK.sceneName||'Template'); if(name===null) return;
-    const type=(prompt('Tipo: wall / room / detail','wall')||'wall').toLowerCase().trim();
+    const type=(prompt('Tipo: gallery (parede limpa p/ versão galeria) / room (divisão) / detail','gallery')||'gallery').toLowerCase().trim();
     const q=currentCorners(); const quadN=q.map(p=>({x:p.x/MK.cw, y:p.y/MK.ch}));
     const t={ id:'t'+Date.now(), name, type, created:Date.now(),
       scene:sceneToDataURL(), nativeW:MK.nativeW, nativeH:MK.nativeH,
