@@ -687,6 +687,73 @@
     }
   };
 
+  // ── GERADOR DE CENÁRIO (prompt p/ Gemini) ──────────────────────────────────
+  const GEN_OPTS={
+    view:[
+      ['gallery','Galeria','a clean minimalist art gallery interior wall','vertical 4:5'],
+      ['sala','Sala','a cozy contemporary living room interior','horizontal 3:2'],
+      ['quarto','Quarto','a serene calm bedroom interior','horizontal 3:2'],
+      ['corredor','Corredor','a bright hallway / corridor interior','vertical 4:5'],
+      ['entrada','Entrada','a stylish entryway / foyer','vertical 4:5'],
+      ['escritorio','Escritório','a modern home office interior','horizontal 3:2'],
+      ['varanda','Varanda','a sunlit balcony / outdoor terrace','horizontal 3:2'],
+    ],
+    style:[
+      ['luxo','Luxo','luxury high-end elegant'],
+      ['minimal','Minimalista','minimalist uncluttered'],
+      ['escandinavo','Escandinavo','Scandinavian, light wood, airy'],
+      ['japandi','Japandi','Japandi, warm minimal, natural materials'],
+      ['industrial','Industrial','industrial, concrete, raw'],
+      ['midcentury','Mid-century','mid-century modern'],
+      ['boho','Boho','boho, organic, textured'],
+      ['contemporaneo','Contemporâneo','contemporary designer'],
+    ],
+    light:[
+      ['natural','Natural suave','soft natural daylight with a single clear direction and gentle shadows'],
+      ['dourada','Dourada','warm golden-hour light, long soft shadows'],
+      ['dramatica','Dramática/escura','dim moody cinematic low light (ideal for a backlit piece to glow)'],
+      ['janela','Janela lateral','soft window light from the side casting gentle directional shadows'],
+      ['neon','Néon ambiente','subtle ambient neon glow with deep shadows'],
+    ],
+    angle:[
+      ['frontal','Frontal','straight-on eye-level view'],
+      ['tq_esq','3/4 esquerda','slight three-quarter angle from the left'],
+      ['tq_dir','3/4 direita','slight three-quarter angle from the right'],
+      ['baixo','De baixo','slightly low angle looking up'],
+      ['olhos','Nível dos olhos','natural eye-level perspective'],
+    ],
+    palette:[
+      ['quente','Neutros quentes','warm neutral tones (beige, cream, sand)'],
+      ['frio','Neutros frios','cool neutral tones (soft greys, off-white)'],
+      ['terracota','Terracota','earthy terracotta and clay tones'],
+      ['moody','Escuro/moody','dark moody tones with deep shadows'],
+      ['salvia','Verde sálvia','sage green and natural earthy tones'],
+      ['creme','Branco/creme','soft white and cream palette'],
+    ],
+  };
+  MK.gen={view:'gallery',style:'luxo',light:'natural',angle:'frontal',palette:'quente'};
+  function genGet(grp,id){ return (GEN_OPTS[grp].find(o=>o[0]===id))||GEN_OPTS[grp][0]; }
+  function buildGenPrompt(){
+    const g=MK.gen, v=genGet('view',g.view), st=genGet('style',g.style), li=genGet('light',g.light), an=genGet('angle',g.angle), pa=genGet('palette',g.palette);
+    return `Photorealistic interior photograph, ultra high resolution (3000px+), of ${v[2]}, ${st[2]} style. ${pa[2]}. ${li[2]}; ${an[2]}. There is a clean empty wall area with generous negative space to place a single artwork — no frames and no existing art in that spot. The wall is matte and mid-toned so it can catch a luminous piece's glow; include one subtle reflectable highlight from an off-frame light source on a nearby surface. Keep the placement area neutral and free of any colored glow or panel, ready for a translucent backlit acrylic piece to be added in post-production. Composition ${v[3]}. No text, no logos, no people. Editorial, premium interior-decor aesthetic.`;
+  }
+  function renderGen(){
+    const box=$('mkGenOpts'); if(!box) return; box.innerHTML='';
+    const groups=[['view','Vista'],['style','Estilo'],['light','Iluminação'],['angle','Ângulo'],['palette','Paleta']];
+    groups.forEach(([grp,lbl])=>{
+      const sec=document.createElement('div');sec.className='mk-gengrp';
+      const h=document.createElement('div');h.className='mk-genlbl';h.textContent=lbl;sec.appendChild(h);
+      const row=document.createElement('div');row.className='mk-genchips';
+      GEN_OPTS[grp].forEach(o=>{ const b=document.createElement('button');b.className='mk-chip2'+(MK.gen[grp]===o[0]?' on':'');b.textContent=o[1];b.onclick=()=>{MK.gen[grp]=o[0];renderGen();};row.appendChild(b); });
+      sec.appendChild(row); box.appendChild(sec);
+    });
+    const ta=$('mkGenOut'); if(ta) ta.value=buildGenPrompt();
+  }
+  window.mockOpenGen=function(){ $('mkGen').hidden=false; renderGen(); };
+  window.mockCloseGen=function(){ $('mkGen').hidden=true; };
+  window.mockGenRandom=function(){ for(const grp in GEN_OPTS){ const a=GEN_OPTS[grp]; MK.gen[grp]=a[Math.floor(Math.random()*a.length)][0]; } renderGen(); };
+  window.mockGenCopy=function(){ const t=buildGenPrompt(); navigator.clipboard&&navigator.clipboard.writeText(t); const b=$('mkGenCopyBtn'); if(b){const o=b.textContent;b.textContent='Copiado ✓';setTimeout(()=>b.textContent=o,1400);} };
+
   // ── biblioteca de templates (IndexedDB) ────────────────────────────────────
   const DB='auronMockups', STORE='templates';
   function idb(){ return new Promise((res,rej)=>{ const r=indexedDB.open(DB,1);

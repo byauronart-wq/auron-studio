@@ -3482,6 +3482,7 @@ window.addEventListener('keydown',e=>{
     <button class="mk-b" onclick="mockUseDesign()">Usar design atual</button>
     <button class="mk-b" onclick="document.getElementById('mkDesignInput').click()">Carregar PNG</button>
     <button class="mk-b" onclick="mockOpenLib()">Templates</button>
+    <button class="mk-b" onclick="mockOpenGen()">Gerar cenário</button>
     <span class="mk-sp"></span>
     <button class="mk-b" onclick="mockExport()">Exportar (wall)</button>
     <button class="mk-b pri" onclick="mockExportSet()">Exportar conjunto</button>
@@ -3539,9 +3540,23 @@ window.addEventListener('keydown',e=>{
     <div id="mkLibGrid" class="mk-libgrid"></div>
   </div>
 </div>
+<div id="mkGen" hidden>
+  <div class="mk-libbox">
+    <div class="mk-libhead"><b>Gerar cenário · prompt p/ Gemini</b><button class="mk-b" onclick="mockGenRandom()">🎲 Aleatório</button><span class="mk-sp"></span><button class="mk-b" onclick="mockCloseGen()">Fechar</button></div>
+    <div id="mkGenOpts" style="overflow:auto"></div>
+    <div class="mk-genlbl" style="margin-top:10px">Prompt (inglês, para melhor resultado)</div>
+    <textarea id="mkGenOut" readonly rows="5" style="width:100%;background:#070a0e;color:#cfe3ec;border:1px solid #1d2832;border-radius:8px;padding:10px;font-size:11px;line-height:1.5;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;margin-top:8px"><button class="mk-b pri" id="mkGenCopyBtn" onclick="mockGenCopy()">Copiar prompt</button><span style="flex:1"></span></div>
+  </div>
+</div>
 <style>
-  #mkLib{position:fixed;inset:0;z-index:70;background:rgba(4,6,9,.82);display:flex;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif}
-  #mkLib[hidden]{display:none}
+  #mkLib,#mkGen{position:fixed;inset:0;z-index:70;background:rgba(4,6,9,.82);display:flex;align-items:center;justify-content:center;font-family:'DM Sans',sans-serif}
+  #mkLib[hidden],#mkGen[hidden]{display:none}
+  .mk-gengrp{margin-bottom:10px}
+  .mk-genlbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#7d97a6;margin-bottom:6px}
+  .mk-genchips{display:flex;flex-wrap:wrap;gap:6px}
+  .mk-chip2{font:500 12px 'DM Sans';color:#bcd3de;background:#10161d;border:1px solid #1d2832;border-radius:20px;padding:7px 13px;cursor:pointer}
+  .mk-chip2.on{background:#123040;border-color:#2f6f86;color:#bfe6f4}
   .mk-libbox{width:min(880px,92vw);max-height:84vh;display:flex;flex-direction:column;background:#0b0f14;border:1px solid #1b2530;border-radius:14px;padding:16px;color:#cfe3ec}
   .mk-libhead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
   .mk-libhead b{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#9fc0d0}
