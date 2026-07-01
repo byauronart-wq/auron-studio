@@ -2744,7 +2744,8 @@ function applyGP(lid,pid){if(!pid)return;const L=layers.find(l=>l.id===lid),p=GR
 function hsl2hex(h,s,l){ s/=100;l/=100; const a=s*Math.min(l,1-l);
   const f=n=>{const k=(n+h/30)%12; const c=l-a*Math.max(-1,Math.min(k-3,9-k,1)); return Math.round(c*255).toString(16).padStart(2,'0');};
   return '#'+f(0)+f(8)+f(4); }
-function randGradient(style,nc){ nc=nc||3; const base=Math.random()*360; const hues=[];
+function hexHue(hex){ if(!/^#[0-9a-f]{6}$/i.test(hex))return Math.random()*360; const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255; const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn; let h=0; if(d){ if(mx===r)h=((g-b)/d)%6; else if(mx===g)h=(b-r)/d+2; else h=(r-g)/d+4; h*=60; if(h<0)h+=360; } return h; }
+function randGradient(style,nc,baseHue){ nc=nc||3; const base=(baseHue!=null)?baseHue:Math.random()*360; const hues=[];
   if(style==='analoga') for(let i=0;i<nc;i++)hues.push(base+i*24);
   else if(style==='complementar') for(let i=0;i<nc;i++)hues.push(base+(i%2?180:0)+i*10);
   else if(style==='triadica') for(let i=0;i<nc;i++)hues.push(base+(i%3)*120);
@@ -2754,18 +2755,21 @@ function randGradient(style,nc){ nc=nc||3; const base=Math.random()*360; const h
     const l=pastel?76+Math.random()*8:(i===0?56+Math.random()*14:44+Math.random()*22);
     return hsl2hex(((h%360)+360)%360,s,l); });
 }
-let GRAD_STYLE='vivo', GRAD_NC=3, GRAD_MODE='circular';
+let GRAD_STYLE='vivo', GRAD_NC=3, GRAD_MODE='circular', GRAD_LINDIR='h', GRAD_DOMON=false, GRAD_DOM='#ff3b8b';
+function makePalette(){ const base=(GRAD_DOMON&&GRAD_DOM)?hexHue(GRAD_DOM):null; const cols=randGradient(GRAD_STYLE,GRAD_NC,base); if(GRAD_DOMON&&GRAD_DOM)cols[0]=GRAD_DOM; return cols; }
+function spinBtn(id,fn){ const b=el(id); if(b){b.classList.add('loading');b.disabled=true;} setTimeout(()=>{ try{fn();}finally{ if(b){b.classList.remove('loading');b.disabled=false;} } },380); }
+window.gradSetDom=function(v){ GRAD_DOM=v; GRAD_DOMON=true; renderGradModal(); };
+window.gradToggleDom=function(){ GRAD_DOMON=!GRAD_DOMON; renderGradModal(); };
 function gradMakeLayer(colors,opts){ opts=opts||{}; const L=mkLayer('blob'); L.colors=[...colors]; L.blend='source-over'; L.name='Bloom';
-  if(GRAD_MODE==='linear'||opts.linear){ L.gradDir='linear'; L.gradAngle=Math.round(Math.random()*360); L.sizeX=L.sizeY=opts.size||120; L.core=55; }
+  if(GRAD_MODE==='linear'||opts.linear){ L.gradDir='linear'; L.gradAngle=(GRAD_LINDIR==='v')?90:0; L.sizeX=L.sizeY=opts.size||130; L.core=55; }
   else { L.gradDir='in-out'; L.fshape='circle'; L.core=opts.core!=null?opts.core:(55+Math.round(Math.random()*20)); L.sizeX=L.sizeY=opts.size||(40+Math.round(Math.random()*45)); }
   if(opts.posX!=null){L.posX=opts.posX;L.posY=opts.posY;}
   return L;
 }
-function gradRandomOne(){ saveUndo(); const L=gradMakeLayer(randGradient(GRAD_STYLE,GRAD_NC)); layers.push(L); activeId=L.id; renderList(); render(); updateHOv(); }
-function gradGrid(){ saveUndo(); const cols=4,rows=3,mx=100/(cols+1),my=100/(rows+1);
-  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){ const L=gradMakeLayer(randGradient(GRAD_STYLE,GRAD_NC),{size:20,core:62,posX:Math.round(mx*(c+1)),posY:Math.round(my*(r+1))}); layers.push(L); }
-  activeId=layers[layers.length-1].id; renderList(); render(); updateHOv();
-}
+function gradRandomOne(){ spinBtn('gGenBtn',()=>{ saveUndo(); const L=gradMakeLayer(makePalette()); layers.push(L); activeId=L.id; renderList(); render(); updateHOv(); }); }
+function gradGrid(){ spinBtn('gGridBtn',()=>{ saveUndo(); const cols=4,rows=3,mx=100/(cols+1),my=100/(rows+1);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){ const L=gradMakeLayer(makePalette(),{size:20,core:62,posX:Math.round(mx*(c+1)),posY:Math.round(my*(r+1))}); layers.push(L); }
+  activeId=layers[layers.length-1].id; renderList(); render(); updateHOv(); }); }
 function gradTemplates(){ try{return JSON.parse(localStorage.getItem('auronGrads')||'[]');}catch(e){return[];} }
 function gradSaveCurrent(){ const L=layers.find(l=>l.id===activeId); if(!L){alert('Seleciona uma camada com gradiente.');return;} const name=prompt('Nome do gradiente:','Grad '+(gradTemplates().length+1)); if(!name)return; const arr=gradTemplates(); arr.push({name,colors:[...L.colors]}); localStorage.setItem('auronGrads',JSON.stringify(arr)); renderGradModal(); }
 function gradApply(colors){ const L=layers.find(l=>l.id===activeId); if(L){ saveUndo(); L.colors=[...colors]; wireColors(L); updGB(L); render(); } else { saveUndo(); const NL=gradMakeLayer(colors); layers.push(NL); activeId=NL.id; renderList(); render(); } }
@@ -2777,14 +2781,21 @@ function renderGradModal(){
   const ctl=el('gradCtl'); if(!ctl)return;
   ctl.innerHTML='<div class="mk-genlbl">Estilo</div><div class="mk-genchips" id="gGs"></div>'+
     '<div class="mk-genlbl" style="margin-top:8px">Forma</div><div class="mk-genchips" id="gGm"></div>'+
+    (GRAD_MODE==='linear'?'<div class="mk-genlbl" style="margin-top:8px">Direção</div><div class="mk-genchips" id="gGd"></div>':'')+
     '<div class="mk-genlbl" style="margin-top:8px">Nº de cores</div><div class="mk-genchips" id="gGn"></div>'+
+    '<div class="mk-genlbl" style="margin-top:8px">Cor dominante</div>'+
+    '<div class="mk-genchips" style="align-items:center">'+
+      '<button class="mk-chip2'+(GRAD_DOMON?' on':'')+'" onclick="gradToggleDom()">'+(GRAD_DOMON?'Ligada':'Desligada')+'</button>'+
+      '<input type="color" value="'+GRAD_DOM+'" oninput="gradSetDom(this.value)" style="width:40px;height:32px;border:1px solid #1d2832;border-radius:8px;background:none;padding:2px;cursor:pointer">'+
+      '<span style="font-size:11px;color:#7d97a6">gera o gradiente à volta desta cor</span></div>'+
     '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
-      '<button class="mk-b pri" onclick="gradRandomOne()">🎲 Gerar</button>'+
-      '<button class="mk-b" onclick="gradGrid()">Grelha 4×3</button>'+
+      '<button class="mk-b pri" id="gGenBtn" onclick="gradRandomOne()">🎲 Gerar</button>'+
+      '<button class="mk-b" id="gGridBtn" onclick="gradGrid()">Grelha 4×3</button>'+
       '<button class="mk-b" onclick="gradSaveCurrent()">Guardar gradiente atual</button></div>';
   const mk=(host,arr,cur,fn)=>{ const h=el(host); if(!h)return; h.innerHTML=''; arr.forEach(([v,lb])=>{const b=document.createElement('button');b.className='mk-chip2'+(cur===v?' on':'');b.textContent=lb;b.onclick=()=>fn(v);h.appendChild(b);}); };
   mk('gGs',styles,GRAD_STYLE,v=>{GRAD_STYLE=v;renderGradModal();});
   mk('gGm',[['circular','Circular'],['linear','Linear']],GRAD_MODE,v=>{GRAD_MODE=v;renderGradModal();});
+  if(GRAD_MODE==='linear') mk('gGd',[['h','Horizontal'],['v','Vertical']],GRAD_LINDIR,v=>{GRAD_LINDIR=v;renderGradModal();});
   mk('gGn',[[2,'2'],[3,'3'],[4,'4'],[5,'5']],GRAD_NC,v=>{GRAD_NC=+v;renderGradModal();});
   const grid=el('gradTpls'); if(!grid)return; grid.innerHTML=''; const tpls=gradTemplates();
   if(!tpls.length){ grid.innerHTML='<div class="mk-genlbl">Ainda sem templates. Gera um gradiente e clica “Guardar gradiente atual”.</div>'; return; }
@@ -3621,6 +3632,9 @@ window.addEventListener('keydown',e=>{
   .mk-genchips{display:flex;flex-wrap:wrap;gap:6px}
   .mk-chip2{font:500 12px 'DM Sans';color:#bcd3de;background:#10161d;border:1px solid #1d2832;border-radius:20px;padding:7px 13px;cursor:pointer}
   .mk-chip2.on{background:#123040;border-color:#2f6f86;color:#bfe6f4}
+  .mk-b.loading{color:transparent!important;position:relative;pointer-events:none}
+  .mk-b.loading::after{content:'';position:absolute;inset:0;margin:auto;width:14px;height:14px;border:2px solid #7fd0e8;border-top-color:transparent;border-radius:50%;animation:mkspin .6s linear infinite}
+  @keyframes mkspin{to{transform:rotate(360deg)}}
   .mk-libbox{width:min(880px,92vw);max-height:84vh;display:flex;flex-direction:column;background:#0b0f14;border:1px solid #1b2530;border-radius:14px;padding:16px;color:#cfe3ec}
   .mk-libhead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
   .mk-libhead b{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#9fc0d0}
