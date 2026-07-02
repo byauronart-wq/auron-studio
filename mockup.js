@@ -455,7 +455,8 @@
       const amt=MK.env/100;
       // H = só o que é MUITO claro na cena (isolado com brilho/contraste → médios ficam pretos)
       const H=document.createElement('canvas');H.width=w;H.height=h;const hx=H.getContext('2d');
-      hx.filter='blur('+Math.max(1,0.006*mn)+'px) brightness(0.62) contrast(3.1)';
+      // blur GRANDE primeiro (mata o grão do JPEG) e só depois isola realces → reflexo liso, sem ruído
+      hx.filter='blur('+Math.max(3,0.02*mn)+'px) brightness(0.6) contrast(2.9) blur('+Math.max(1,0.006*mn)+'px)';
       hx.drawImage(MK.scene,0,0,w,h); hx.filter='none';
       hx.globalCompositeOperation='destination-in'; hx.drawImage(clipL,0,0); hx.globalCompositeOperation='source-over';
       // reflexo espelhado dos realces (vidro) — localizado, subtil, recortado à placa
@@ -472,6 +473,34 @@
       sx3.fillStyle=gg; sx3.fillRect(0,0,w,h); sx3.globalCompositeOperation='destination-in'; sx3.drawImage(clipL,0,0); sx3.globalCompositeOperation='source-over';
       ctx2.globalAlpha=1; ctx2.drawImage(S,0,0);
       ctx2.globalCompositeOperation='source-over';
+    }
+    // 3.6) BRILHO DE VIDRO — sinais de acrílico polido, SEMPRE no acabamento acrílico:
+    //      faixa especular diagonal (reflexo de vidro) + aresta superior a apanhar luz.
+    if(full && MK.finish==='acrylic'){
+      const clipG=hasPanel?renderShapeLayer(w,h,ratio):layer;
+      const cx=w/2, cy=h/2, LL=Math.hypot(w,h);
+      // faixa especular diagonal larga e suave (alinha com a luz se a Luz de janela estiver ligada)
+      const th=((MK.beamOn?MK.beamAngle:38))*Math.PI/180, nx=Math.cos(th+Math.PI/2), ny=Math.sin(th+Math.PI/2);
+      const G=document.createElement('canvas');G.width=w;G.height=h;const gx2=G.getContext('2d');
+      const g=gx2.createLinearGradient(cx-nx*LL/2,cy-ny*LL/2,cx+nx*LL/2,cy+ny*LL/2);
+      g.addColorStop(0,'rgba(255,255,255,0)');
+      g.addColorStop(0.30,'rgba(255,255,255,0)');
+      g.addColorStop(0.40,'rgba(255,255,255,0.20)');   // risca principal
+      g.addColorStop(0.44,'rgba(255,255,255,0.05)');
+      g.addColorStop(0.52,'rgba(255,255,255,0.10)');   // risca secundária ténue (dupla = vidro)
+      g.addColorStop(0.56,'rgba(255,255,255,0)');
+      g.addColorStop(1,'rgba(255,255,255,0)');
+      gx2.fillStyle=g; gx2.fillRect(0,0,w,h);
+      gx2.globalCompositeOperation='destination-in'; gx2.drawImage(clipG,0,0); gx2.globalCompositeOperation='source-over';
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=1; ctx2.drawImage(G,0,0);
+      // aresta superior iluminada (o canto de vidro a apanhar luz)
+      const off=Math.max(2,0.012*mn);
+      const rim=document.createElement('canvas');rim.width=w;rim.height=h;const rm=rim.getContext('2d');
+      rm.drawImage(clipG,0,0); rm.globalCompositeOperation='destination-out'; rm.drawImage(clipG,0,off);
+      rm.globalCompositeOperation='source-atop'; rm.fillStyle='rgba(255,255,255,0.65)'; rm.fillRect(0,0,w,h);
+      rm.globalCompositeOperation='source-over';
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=0.55; ctx2.drawImage(rim,0,0);
+      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 4) REFLEXO espelhado DIRECIONAL — faixa de brilho que VARRE com o ângulo, espelha a sala
     if(full && MK.reflect>0 && MK.scene){
