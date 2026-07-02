@@ -3613,6 +3613,14 @@ window.addEventListener('keydown',e=>{
     <div class="mk-row"><span>Translucidez</span><input type="range" id="mkTransl" min="0" max="100" value="20" oninput="mockSetTranslucency(this.value)"><span class="mk-v" id="mkTranslV">20</span></div>
     <div class="mk-row"><span>Reflexo (brilho)</span><input type="range" id="mkReflect" min="0" max="100" value="0" oninput="mockSetReflect(this.value)"><span class="mk-v" id="mkReflectV">0</span></div>
     <div class="mk-row"><span>Reflexo (ângulo)</span><input type="range" id="mkRefAng" min="0" max="360" value="135" oninput="mockSetReflectAngle(this.value)"><span class="mk-v" id="mkRefAngV">135</span></div>
+    <div class="mk-row"><button class="mk-b" id="mkBeamBtn" onclick="mockToggleBeam()" title="Faixa de sol que atravessa a placa, igual à que cai na parede">Luz de janela</button></div>
+    <div id="mkBeamRows" style="display:none">
+      <div class="mk-row"><span>Luz · intensidade</span><input type="range" id="mkBeam" min="0" max="100" value="55" oninput="mockSetBeam(this.value)"><span class="mk-v" id="mkBeamV">55</span></div>
+      <div class="mk-row"><span>Luz · ângulo</span><input type="range" id="mkBeamAng" min="0" max="360" value="60" oninput="mockSetBeamAngle(this.value)"><span class="mk-v" id="mkBeamAngV">60</span></div>
+      <div class="mk-row"><span>Luz · posição</span><input type="range" id="mkBeamPos" min="0" max="100" value="50" oninput="mockSetBeamPos(this.value)"><span class="mk-v" id="mkBeamPosV">50</span></div>
+      <div class="mk-row"><span>Luz · largura</span><input type="range" id="mkBeamW" min="4" max="100" value="40" oninput="mockSetBeamWidth(this.value)"><span class="mk-v" id="mkBeamWV">40</span></div>
+      <div class="mk-row"><span>Luz · suavidade</span><input type="range" id="mkBeamS" min="0" max="100" value="55" oninput="mockSetBeamSoft(this.value)"><span class="mk-v" id="mkBeamSV">55</span></div>
+    </div>
     <div class="mk-hint">Vidro translúcido: vê-se a parede atrás. <b>Translucidez</b> = parede visível através da cor · <b>Reflexo (ângulo)</b> = a faixa de brilho varre o vidro (como um reflexo real) · <b>Vidro fosco</b> = acrílico mate · <b>Preencher placa</b> = placa sólida com a cor da arte.</div>
   </div>
 </div>

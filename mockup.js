@@ -20,6 +20,7 @@
     spill:0, shadow:0, shadowSize:35, shadowAngle:135, reflect:0,  // V5 realismo
     translucency:20, reflectAngle:135, glassFrost:false,           // vidro translúcido
     thickness:30,                                                  // espessura do acrílico (5mm look)
+    beamOn:false, beam:55, beamAngle:60, beamPos:50, beamWidth:40, beamSoft:55, // faixa de luz de janela sobre a placa
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null, selected:false,
@@ -184,6 +185,12 @@
   window.mockSetShadowSize=function(v){ mkSnapshot(); MK.shadowSize=+v; $('mkShSizeV').textContent=Math.round(v); renderMock(); };
   window.mockSetShadowAngle=function(v){ mkSnapshot(); MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
   window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
+  window.mockToggleBeam=function(){ mkSnapshot(true); MK.beamOn=!MK.beamOn; const b=$('mkBeamBtn'); if(b){b.classList.toggle('on',MK.beamOn); b.textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela';} const r=$('mkBeamRows'); if(r)r.style.display=MK.beamOn?'':'none'; renderMock(); };
+  window.mockSetBeam=function(v){ mkSnapshot(); MK.beam=+v; $('mkBeamV').textContent=Math.round(v); renderMock(); };
+  window.mockSetBeamAngle=function(v){ mkSnapshot(); MK.beamAngle=+v; $('mkBeamAngV').textContent=Math.round(v); renderMock(); };
+  window.mockSetBeamPos=function(v){ mkSnapshot(); MK.beamPos=+v; $('mkBeamPosV').textContent=Math.round(v); renderMock(); };
+  window.mockSetBeamWidth=function(v){ mkSnapshot(); MK.beamWidth=+v; $('mkBeamWV').textContent=Math.round(v); renderMock(); };
+  window.mockSetBeamSoft=function(v){ mkSnapshot(); MK.beamSoft=+v; $('mkBeamSV').textContent=Math.round(v); renderMock(); };
   window.mockRotate90=function(){
     if(!MK.design) return; mkSnapshot(true);
     if(MK.persp&&MK.quad){ const c=centroid(MK.quad); MK.quad=MK.quad.map(p=>({x:c.x-(p.y-c.y), y:c.y+(p.x-c.x)})); }
@@ -431,6 +438,28 @@
       g2.addColorStop(Math.max(0,.5-bw*0.45),'rgba(255,255,255,0)');g2.addColorStop(.5,'rgba(255,255,255,'+(0.6*MK.reflect/100)+')');g2.addColorStop(Math.min(1,.5+bw*0.45),'rgba(255,255,255,0)');
       spx.fillStyle=g2; spx.fillRect(0,0,w,h);
       ctx2.globalCompositeOperation='lighter'; ctx2.drawImage(sp,0,0); ctx2.globalCompositeOperation='source-over';
+    }
+    // 5) LUZ DE JANELA — faixa de sol que atravessa a placa (mesma que cai na parede)
+    if(MK.beamOn && MK.beam>0){
+      const clipL=(MK.finish&&MK.finish!=='none'&&MK.shapeMask)?renderShapeLayer(w,h,ratio):layer;
+      const cx=w/2, cy=h/2, LL=Math.hypot(w,h);
+      const th=(MK.beamAngle||60)*Math.PI/180;                 // direção do raio
+      const nx=Math.cos(th+Math.PI/2), ny=Math.sin(th+Math.PI/2); // normal → varre a largura da faixa
+      const bm=document.createElement('canvas');bm.width=w;bm.height=h;const bx=bm.getContext('2d');
+      const g=bx.createLinearGradient(cx-nx*LL/2,cy-ny*LL/2,cx+nx*LL/2,cy+ny*LL/2);
+      const t0=Math.max(0,Math.min(1,0.5+(MK.beamPos-50)/100));
+      const hw=Math.max(0.02,MK.beamWidth/200);
+      const soft=Math.max(0.03,(MK.beamSoft/100)*0.45+0.05);
+      const a=Math.min(0.92,MK.beam/100);
+      const cs=(p,al)=>{ p=Math.max(0,Math.min(1,p)); g.addColorStop(p,'rgba(255,248,232,'+al+')'); };
+      cs(0,0); cs(t0-hw-soft,0); cs(t0-hw,a); cs(t0,a); cs(t0+hw,a); cs(t0+hw+soft,0); cs(1,0);
+      bx.fillStyle=g; bx.fillRect(0,0,w,h);
+      bx.globalCompositeOperation='destination-in'; bx.drawImage(clipL,0,0); bx.globalCompositeOperation='source-over';
+      // wash quente e claro dentro da faixa (a superfície do acrílico a apanhar o sol)
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=1; ctx2.drawImage(bm,0,0);
+      // um toque de contraste/brilho extra no núcleo da faixa
+      ctx2.globalCompositeOperation='soft-light'; ctx2.globalAlpha=0.6; ctx2.drawImage(bm,0,0);
+      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
   }
   window.renderMock=function(){
@@ -772,16 +801,24 @@
       ['salvia','Verde sálvia','sage green and natural earthy tones'],
       ['creme','Branco/creme','soft white and cream palette'],
     ],
+    beam:[
+      ['nenhum','Sem raio','no strong light beam'],
+      ['suave','Raio suave','a soft diagonal shaft of daylight from an off-frame window falls gently across the wall and over the empty placement area'],
+      ['forte','Raio de sol forte','a strong bright sunbeam cuts diagonally across the wall through an off-frame window, forming a luminous soft-edged band of light that crosses the empty placement area, with the surrounding wall slightly darker in shadow'],
+      ['janela','Sombra de janela','clear sunlight through a window casts the soft shadow of the window frame and mullions across the wall and the placement area, creating bright and shadowed panes'],
+      ['persiana','Persiana','warm sunlight filtered through venetian blinds casts soft horizontal stripes of light and shadow across the wall and the placement area'],
+    ],
   };
-  MK.gen={view:'gallery',style:'luxo',light:'natural',angle:'frontal',palette:'quente'};
+  MK.gen={view:'gallery',style:'luxo',light:'natural',angle:'frontal',palette:'quente',beam:'suave'};
   function genGet(grp,id){ return (GEN_OPTS[grp].find(o=>o[0]===id))||GEN_OPTS[grp][0]; }
   function buildGenPrompt(){
-    const g=MK.gen, v=genGet('view',g.view), st=genGet('style',g.style), li=genGet('light',g.light), an=genGet('angle',g.angle), pa=genGet('palette',g.palette);
-    return `Photorealistic interior photograph, ultra high resolution (3000px+), of ${v[2]}, ${st[2]} style. ${pa[2]}. ${li[2]}; ${an[2]}. There is a clean empty wall area with generous negative space to place a single artwork — no frames and no existing art in that spot. The wall is matte and mid-toned so it can catch a luminous piece's glow; include one subtle reflectable highlight from an off-frame light source on a nearby surface. Keep the placement area neutral and free of any colored glow or panel, ready for a translucent backlit acrylic piece to be added in post-production. Composition ${v[3]}. No text, no logos, no people. Editorial, premium interior-decor aesthetic.`;
+    const g=MK.gen, v=genGet('view',g.view), st=genGet('style',g.style), li=genGet('light',g.light), an=genGet('angle',g.angle), pa=genGet('palette',g.palette), be=genGet('beam',g.beam);
+    const beamTxt=(be[0]!=='nenhum')?` ${be[2]}.`:'';
+    return `Photorealistic interior photograph, ultra high resolution (3000px+), of ${v[2]}, ${st[2]} style. ${pa[2]}. ${li[2]}; ${an[2]}.${beamTxt} There is a clean empty wall area with generous negative space to place a single artwork — no frames and no existing art in that spot. The wall is matte and mid-toned so it can catch a luminous piece's glow; include one subtle reflectable highlight from an off-frame light source on a nearby surface. Keep the placement area free of any panel or colored glow (the natural light and shadows falling on it are welcome), ready for a translucent backlit acrylic piece to be added in post-production. Composition ${v[3]}. No text, no logos, no people. Editorial, premium interior-decor aesthetic.`;
   }
   function renderGen(){
     const box=$('mkGenOpts'); if(!box) return; box.innerHTML='';
-    const groups=[['view','Vista'],['style','Estilo'],['light','Iluminação'],['angle','Ângulo'],['palette','Paleta']];
+    const groups=[['view','Vista'],['style','Estilo'],['light','Iluminação'],['beam','Raio de luz'],['angle','Ângulo'],['palette','Paleta']];
     groups.forEach(([grp,lbl])=>{
       const sec=document.createElement('div');sec.className='mk-gengrp';
       const h=document.createElement('div');h.className='mk-genlbl';h.textContent=lbl;sec.appendChild(h);
@@ -821,6 +858,7 @@
       quadN, mask:MK.mask, maskRadius:MK.maskRadius, blend:MK.blend, opacity:MK.opacity,
       finish:MK.finish, fillPanel:MK.fillPanel, glassFrost:MK.glassFrost, translucency:MK.translucency, thickness:MK.thickness, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
       spill:MK.spill, shadow:MK.shadow, shadowSize:MK.shadowSize, shadowAngle:MK.shadowAngle, reflect:MK.reflect, reflectAngle:MK.reflectAngle,
+      beamOn:MK.beamOn, beam:MK.beam, beamAngle:MK.beamAngle, beamPos:MK.beamPos, beamWidth:MK.beamWidth, beamSoft:MK.beamSoft,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
   };
@@ -840,6 +878,7 @@
       MK.finish=t.finish||'none'; MK.fillPanel=!!t.fillPanel; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
       MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowSize=(t.shadowSize!=null?t.shadowSize:35); MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
       MK.glassFrost=!!t.glassFrost; MK.translucency=(t.translucency!=null?t.translucency:20); MK.reflectAngle=(t.reflectAngle!=null?t.reflectAngle:135); MK.thickness=(t.thickness!=null?t.thickness:30);
+      MK.beamOn=!!t.beamOn; MK.beam=(t.beam!=null?t.beam:55); MK.beamAngle=(t.beamAngle!=null?t.beamAngle:60); MK.beamPos=(t.beamPos!=null?t.beamPos:50); MK.beamWidth=(t.beamWidth!=null?t.beamWidth:40); MK.beamSoft=(t.beamSoft!=null?t.beamSoft:55);
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
@@ -849,7 +888,8 @@
       if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
-      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness'],['mkBeam','beam'],['mkBeamAng','beamAngle'],['mkBeamPos','beamPos'],['mkBeamW','beamWidth'],['mkBeamS','beamSoft']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      if($('mkBeamBtn')){ $('mkBeamBtn').classList.toggle('on',MK.beamOn); $('mkBeamBtn').textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela'; } if($('mkBeamRows'))$('mkBeamRows').style.display=MK.beamOn?'':'none';
       if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
       syncProps(); fitView(); renderMock(); mockCloseLib();
     };
