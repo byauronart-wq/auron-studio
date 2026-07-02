@@ -73,7 +73,7 @@
     MK.design={src,w,h}; MK.selected=true;
     // por defeito, a peça é ACRÍLICO (aspeto de produto) na 1ª colocação — evita o look "chapado/baço"
     if(firstDesign && (!MK.finish || MK.finish==='none')){
-      MK.finish='acrylic'; MK.shadow=28; MK.reflect=0; MK.spill=0; MK.translucency=0; MK.env=55;
+      MK.finish='acrylic'; MK.shadow=28; MK.reflect=0; MK.spill=0; MK.translucency=0; MK.env=18;
       if($('mkFinish'))$('mkFinish').value='acrylic';
       [['mkShadow','shadow'],['mkReflect','reflect'],['mkTransl','translucency'],['mkEnv','env']].forEach(([id,k])=>{const s=$(id);if(s){s.value=MK[k];const v=$(id+'V');if(v)v.textContent=Math.round(MK[k]);}});
     }
@@ -167,10 +167,10 @@
 
     // 4) BORDA/bisel do acrílico — contorno definido (aresta polida) clipado à forma
     x.save(); shapePath(x,w,h); x.clip();
-    // bisel claro interior largo (a espessura do acrílico a apanhar luz)
-    shapePath(x,w,h); x.lineWidth=Math.max(2,mn*0.013); x.strokeStyle='rgba(255,255,255,.26)'; x.stroke();
+    // bisel claro interior fino (a espessura do acrílico a apanhar luz) — subtil, sem clarear a arte
+    shapePath(x,w,h); x.lineWidth=Math.max(1.5,mn*0.007); x.strokeStyle='rgba(255,255,255,.14)'; x.stroke();
     // contorno exterior fino e definido (aresta de corte)
-    shapePath(x,w,h); x.lineWidth=Math.max(1.5,mn*0.005); x.strokeStyle='rgba(18,20,24,.42)'; x.stroke();
+    shapePath(x,w,h); x.lineWidth=Math.max(1.5,mn*0.005); x.strokeStyle='rgba(16,18,22,.5)'; x.stroke();
     x.restore();
     MK.finished=c;
   }
@@ -181,7 +181,7 @@
   window.mockSetFinish=function(v){
     mkSnapshot(true); MK.finish=v; buildFinished();
     // realismo base ao escolher (se ainda a zero) — vidro claro, cor fiel
-    if(v==='acrylic'){ MK.shadow=28; MK.reflect=0; MK.spill=0; MK.translucency=0; MK.env=55; }
+    if(v==='acrylic'){ MK.shadow=28; MK.reflect=0; MK.spill=0; MK.translucency=0; MK.env=18; }
     else if(v==='lightbox'){ if(MK.spill===0)MK.spill=45; if(MK.shadow===0)MK.shadow=15; if(MK.reflect===0)MK.reflect=15; MK.env=35; }
     else if(v==='none'){ MK.env=0; }
     setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkReflect',MK.reflect); setUI('mkTransl',MK.translucency); setUI('mkEnv',MK.env);
@@ -442,30 +442,32 @@
     }
     // 3) a PEÇA — translucidez deixa ver a parede através da cor (mantendo a cor fiel)
     const transl=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
-    ctx2.globalAlpha=MK.opacity*(1-transl); ctx2.globalCompositeOperation=MK.blend; ctx2.drawImage(layer,0,0);
+    ctx2.globalAlpha=MK.opacity*(1-transl); ctx2.globalCompositeOperation=MK.blend;
+    // acrílico retroiluminado brilha mais que um print → ligeiro reforço de cor (nunca baço)
+    if(MK.finish==='acrylic') ctx2.filter='saturate(1.22) contrast(1.06)';
+    ctx2.drawImage(layer,0,0); ctx2.filter='none';
     ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
-    // 3.5) AMBIENTE — acrílico BRILHANTE: só ADITIVO (nunca escurece nem lava a cor).
-    //      A placa retroiluminada mantém a cor viva; por cima ganha realces da sala,
-    //      reflexo espelhado dos elementos e um brilho especular de vidro.
+    // 3.5) AMBIENTE — reflexos de vidro. Só os REALCES FORTES da sala (janela/candeeiros)
+    //      chegam à peça; a parede difusa é descartada para NÃO enevoar/lavar a cor.
     if(full && MK.scene && MK.finish && MK.finish!=='none' && MK.env>0){
       const clipL=hasPanel?renderShapeLayer(w,h,ratio):layer;
       const amt=MK.env/100;
-      // H = realces da sala (só zonas claras: janela, candeeiros) — luminância² p/ não lavar os médios
+      // H = só o que é MUITO claro na cena (isolado com brilho/contraste → médios ficam pretos)
       const H=document.createElement('canvas');H.width=w;H.height=h;const hx=H.getContext('2d');
-      hx.filter='blur('+Math.max(1,0.004*mn)+'px)'; hx.drawImage(MK.scene,0,0,w,h);
-      hx.globalCompositeOperation='multiply'; hx.drawImage(MK.scene,0,0,w,h);
-      hx.filter='none'; hx.globalCompositeOperation='destination-in'; hx.drawImage(clipL,0,0); hx.globalCompositeOperation='source-over';
-      // luz da divisão a bater na face (alinhada) — aditivo, glossy
-      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(0.6,amt*0.5); ctx2.drawImage(H,0,0);
-      // reflexo espelhado da sala (vidro) — H invertido na vertical, recortado à placa
+      hx.filter='blur('+Math.max(1,0.006*mn)+'px) brightness(0.62) contrast(3.1)';
+      hx.drawImage(MK.scene,0,0,w,h); hx.filter='none';
+      hx.globalCompositeOperation='destination-in'; hx.drawImage(clipL,0,0); hx.globalCompositeOperation='source-over';
+      // reflexo espelhado dos realces (vidro) — localizado, subtil, recortado à placa
       const R=document.createElement('canvas');R.width=w;R.height=h;const rx=R.getContext('2d');
       rx.save(); rx.translate(0,h); rx.scale(1,-1); rx.drawImage(H,0,0); rx.restore();
       rx.globalCompositeOperation='destination-in'; rx.drawImage(clipL,0,0); rx.globalCompositeOperation='source-over';
-      ctx2.globalAlpha=Math.min(0.4,amt*0.26); ctx2.drawImage(R,0,0);
-      // brilho especular de vidro (sheen) — faixa clara suave no canto superior-esquerdo
+      ctx2.globalCompositeOperation='screen';
+      ctx2.globalAlpha=Math.min(0.45,amt*0.42); ctx2.drawImage(H,0,0);   // realce direto (janela)
+      ctx2.globalAlpha=Math.min(0.25,amt*0.16); ctx2.drawImage(R,0,0);   // reflexo espelhado
+      // sheen de vidro — risca clara fina no topo (não uma lavagem larga)
       const S=document.createElement('canvas');S.width=w;S.height=h;const sx3=S.getContext('2d');
-      const gg=sx3.createLinearGradient(0,0,w*0.55,h*0.55);
-      gg.addColorStop(0,'rgba(255,255,255,'+(0.18*amt)+')'); gg.addColorStop(0.55,'rgba(255,255,255,0)');
+      const gg=sx3.createLinearGradient(0,0,w*0.32,h*0.32);
+      gg.addColorStop(0,'rgba(255,255,255,'+(0.12*amt)+')'); gg.addColorStop(0.4,'rgba(255,255,255,0)');
       sx3.fillStyle=gg; sx3.fillRect(0,0,w,h); sx3.globalCompositeOperation='destination-in'; sx3.drawImage(clipL,0,0); sx3.globalCompositeOperation='source-over';
       ctx2.globalAlpha=1; ctx2.drawImage(S,0,0);
       ctx2.globalCompositeOperation='source-over';
