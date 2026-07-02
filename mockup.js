@@ -121,10 +121,15 @@
     computeDom();
     // máscara da FORMA (alpha da placa, independente da arte)
     const sm=document.createElement('canvas');sm.width=w;sm.height=h;const smx=sm.getContext('2d');
-    smx.fillStyle='#fff'; shapePath(smx,w,h); smx.fill(); MK.shapeMask=sm;
+    smx.fillStyle='#fff'; shapePath(smx,w,h); smx.fill();
+    // feather leve da borda: elimina pixeis duros/serrilhados contra a parede
+    const fpx=Math.max(0.9, Math.min(w,h)*0.004);
+    const smf=document.createElement('canvas');smf.width=w;smf.height=h;const smfx=smf.getContext('2d');
+    smfx.filter='blur('+fpx+'px)'; smfx.drawImage(sm,0,0); smfx.filter='none';
+    MK.shapeMask=smf;
     // arte recortada à forma
     const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
-    x.drawImage(sm,0,0); x.globalCompositeOperation='source-in'; x.drawImage(MK.design.src,0,0,w,h);
+    x.drawImage(smf,0,0); x.globalCompositeOperation='source-in'; x.drawImage(MK.design.src,0,0,w,h);
     MK.masked=c; buildFinished();
   }
   // acabamento — VIDRO TRANSLÚCIDO: arte FIEL (sem véu) + borda; reflexo é feito ao vivo (compositeDesignOnto)
@@ -556,6 +561,43 @@
     MK.cw=0;MK.ch=0; const e=$('mkEmpty'); if(e)e.style.display='';
     const ctx2=cv&&cv.getContext('2d'); if(ctx2)ctx2.clearRect(0,0,cv.width,cv.height);
     const o=ov&&ov.getContext('2d'); if(o)o.clearRect(0,0,ov.width,ov.height);
+  };
+
+  // LIMPAR MARCA IA — cobre o canto (por defeito inf. direito, onde o Gemini põe a estrela)
+  // com um patch amostrado da parede adjacente, misturado nas bordas interiores.
+  window.mockCleanCorner=function(corner){
+    if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
+    corner=corner||'br';
+    const NW=MK.nativeW||MK.scene.naturalWidth, NH=MK.nativeH||MK.scene.naturalHeight;
+    const base=document.createElement('canvas'); base.width=NW; base.height=NH;
+    const bx=base.getContext('2d'); bx.drawImage(MK.scene,0,0,NW,NH);
+    const sz=Math.round(Math.min(NW,NH)*0.19);           // tamanho do patch
+    const rx=(corner==='tr'||corner==='br')?NW-sz:0;      // canto destino
+    const ry=(corner==='bl'||corner==='br')?NH-sz:0;
+    // amostra da MESMA coluna, deslocada para dentro (preserva o gradiente de luz vertical)
+    const insideY=(ry===0)? ry+Math.round(sz*1.25) : ry-Math.round(sz*1.25);
+    const sy=Math.max(0,Math.min(NH-sz,insideY));
+    const patch=document.createElement('canvas'); patch.width=sz; patch.height=sz;
+    const px=patch.getContext('2d');
+    px.drawImage(base, rx, sy, sz, sz, 0,0, sz,sz);
+    // máscara: opaca no exterior (canto), a esbater nas bordas viradas para dentro
+    const mask=document.createElement('canvas'); mask.width=sz; mask.height=sz;
+    const mx=mask.getContext('2d'); mx.fillStyle='#fff'; mx.fillRect(0,0,sz,sz);
+    const f=Math.round(sz*0.24); mx.globalCompositeOperation='destination-out';
+    const towardX=(rx===0)? {a:sz,b:sz-f} : {a:0,b:f};   // borda interior no eixo X
+    const towardY=(ry===0)? {a:sz,b:sz-f} : {a:0,b:f};   // borda interior no eixo Y
+    let gX=mx.createLinearGradient(towardX.a,0,towardX.b,0);
+    gX.addColorStop(0,'rgba(0,0,0,1)'); gX.addColorStop(1,'rgba(0,0,0,0)');
+    mx.fillStyle=gX; mx.fillRect(0,0,sz,sz);
+    let gY=mx.createLinearGradient(0,towardY.a,0,towardY.b);
+    gY.addColorStop(0,'rgba(0,0,0,1)'); gY.addColorStop(1,'rgba(0,0,0,0)');
+    mx.fillStyle=gY; mx.fillRect(0,0,sz,sz);
+    mx.globalCompositeOperation='source-over';
+    px.globalCompositeOperation='destination-in'; px.drawImage(mask,0,0); px.globalCompositeOperation='source-over';
+    bx.drawImage(patch, rx, ry);
+    const img=new Image();
+    img.onload=function(){ MK.scene=img; if(MK.design) buildMasked(); renderMock(); };
+    img.src=base.toDataURL('image/png');
   };
 
   // ── composição das 3 saídas (resolução nativa) ──────────────────────────────────
