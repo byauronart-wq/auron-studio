@@ -191,6 +191,24 @@
   window.mockSetBeamPos=function(v){ mkSnapshot(); MK.beamPos=+v; $('mkBeamPosV').textContent=Math.round(v); renderMock(); };
   window.mockSetBeamWidth=function(v){ mkSnapshot(); MK.beamWidth=+v; $('mkBeamWV').textContent=Math.round(v); renderMock(); };
   window.mockSetBeamSoft=function(v){ mkSnapshot(); MK.beamSoft=+v; $('mkBeamSV').textContent=Math.round(v); renderMock(); };
+  // alinha a faixa de luz com a direção da luz detetada na cena
+  window.mockAutoBeam=function(){
+    if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
+    mkSnapshot(true);
+    const N=56, c=document.createElement('canvas');c.width=N;c.height=N;const x=c.getContext('2d');
+    x.drawImage(MK.scene,0,0,N,N);
+    const d=x.getImageData(0,0,N,N).data;
+    let sw=0,cxb=0,cyb=0;
+    for(let j=0;j<N;j++)for(let i=0;i<N;i++){ const p=(j*N+i)*4; let b=(0.299*d[p]+0.587*d[p+1]+0.114*d[p+2])/255; b=b*b*b; sw+=b; cxb+=b*(i+0.5); cyb+=b*(j+0.5); }
+    if(!MK.beamOn){ MK.beamOn=true; const btn=$('mkBeamBtn'); if(btn){btn.classList.add('on');btn.textContent='Luz de janela: ligada';} const r=$('mkBeamRows'); if(r)r.style.display=''; }
+    if(sw>1e-6){
+      const vx=(cxb/sw)/N-0.5, vy=(cyb/sw)/N-0.5, mag=Math.hypot(vx,vy);   // vetor centro→luz
+      if(mag<0.02){ MK.beamAngle=60; MK.beamPos=50; }
+      else { MK.beamAngle=((Math.atan2(vy,vx)*180/Math.PI-90)%360+360)%360; MK.beamPos=62; }
+    }
+    [['mkBeamAng','beamAngle'],['mkBeamPos','beamPos']].forEach(([el,k])=>{const s=$(el);if(s){s.value=MK[k];const v=$(el+'V');if(v)v.textContent=Math.round(MK[k]);}});
+    renderMock();
+  };
   window.mockRotate90=function(){
     if(!MK.design) return; mkSnapshot(true);
     if(MK.persp&&MK.quad){ const c=centroid(MK.quad); MK.quad=MK.quad.map(p=>({x:c.x-(p.y-c.y), y:c.y+(p.x-c.x)})); }

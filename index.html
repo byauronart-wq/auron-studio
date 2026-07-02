@@ -3613,7 +3613,7 @@ window.addEventListener('keydown',e=>{
     <div class="mk-row"><span>Translucidez</span><input type="range" id="mkTransl" min="0" max="100" value="20" oninput="mockSetTranslucency(this.value)"><span class="mk-v" id="mkTranslV">20</span></div>
     <div class="mk-row"><span>Reflexo (brilho)</span><input type="range" id="mkReflect" min="0" max="100" value="0" oninput="mockSetReflect(this.value)"><span class="mk-v" id="mkReflectV">0</span></div>
     <div class="mk-row"><span>Reflexo (ângulo)</span><input type="range" id="mkRefAng" min="0" max="360" value="135" oninput="mockSetReflectAngle(this.value)"><span class="mk-v" id="mkRefAngV">135</span></div>
-    <div class="mk-row"><button class="mk-b" id="mkBeamBtn" onclick="mockToggleBeam()" title="Faixa de sol que atravessa a placa, igual à que cai na parede">Luz de janela</button></div>
+    <div class="mk-row"><button class="mk-b" id="mkBeamBtn" onclick="mockToggleBeam()" title="Faixa de sol que atravessa a placa, igual à que cai na parede">Luz de janela</button><button class="mk-b" onclick="mockAutoBeam()" title="Deteta a direção da luz na cena e alinha a faixa automaticamente">Auto (da cena)</button></div>
     <div id="mkBeamRows" style="display:none">
       <div class="mk-row"><span>Luz · intensidade</span><input type="range" id="mkBeam" min="0" max="100" value="55" oninput="mockSetBeam(this.value)"><span class="mk-v" id="mkBeamV">55</span></div>
       <div class="mk-row"><span>Luz · ângulo</span><input type="range" id="mkBeamAng" min="0" max="360" value="60" oninput="mockSetBeamAngle(this.value)"><span class="mk-v" id="mkBeamAngV">60</span></div>
