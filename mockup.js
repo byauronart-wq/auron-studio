@@ -69,7 +69,14 @@
     r.readAsDataURL(f); input.value='';
   };
   function setDesign(src,w,h){
+    const firstDesign=!MK.design;
     MK.design={src,w,h}; MK.selected=true;
+    // por defeito, a peça é ACRÍLICO (aspeto de produto) na 1ª colocação — evita o look "chapado/baço"
+    if(firstDesign && (!MK.finish || MK.finish==='none')){
+      MK.finish='acrylic'; MK.shadow=30; MK.reflect=16; MK.spill=0; MK.translucency=6; MK.env=60;
+      if($('mkFinish'))$('mkFinish').value='acrylic';
+      [['mkShadow','shadow'],['mkReflect','reflect'],['mkTransl','translucency'],['mkEnv','env']].forEach(([id,k])=>{const s=$(id);if(s){s.value=MK[k];const v=$(id+'V');if(v)v.textContent=Math.round(MK[k]);}});
+    }
     buildMasked();
     // se há uma placa de template ativa (perspetiva+quad), o design entra logo nela;
     // caso contrário, posiciona ao centro (comportamento normal)
@@ -537,12 +544,13 @@
   function viewScale(){ const cv=$('mockCv'); if(!cv||!cv.width) return 1; const r=cv.getBoundingClientRect(); return r.width/cv.width; }
   function fitView(){
     const cv=$('mockCv'),wrap=$('mkWrap'),stage=$('mkStage'); if(!cv||!MK.cw) return;
+    // tamanho BASE (encaixe na área) — o zoom é aplicado por transform, não pelo tamanho
     const base=Math.min((stage.clientWidth-40)/MK.cw,(stage.clientHeight-40)/MK.ch,1);
-    const s=base*(MK.zoom||1);
-    cv.style.width=Math.round(MK.cw*s)+'px'; cv.style.height=Math.round(MK.ch*s)+'px';
+    cv.style.width=Math.round(MK.cw*base)+'px'; cv.style.height=Math.round(MK.ch*base)+'px';
     const ov=$('mockOv'); ov.style.width=cv.style.width; ov.style.height=cv.style.height;
     wrap.style.width=cv.style.width; wrap.style.height=cv.style.height;
-    wrap.style.transform='translate('+(MK.panX||0)+'px,'+(MK.panY||0)+'px)';
+    wrap.style.transformOrigin='50% 50%';
+    wrap.style.transform='translate('+(MK.panX||0)+'px,'+(MK.panY||0)+'px) scale('+(MK.zoom||1)+')';
   }
   window.addEventListener('resize',()=>{ if(MK.active){ fitView(); renderMock(); } });
 
@@ -561,11 +569,12 @@
 
   function onDown(e){
     const p0=evPos(e);
-    // PAN: clicar fora da peça com zoom ativo (ou botão do meio) → arrastar a vista
+    // PAN: clicar fora da peça (ou botão do meio) → arrastar a vista, a qualquer zoom
     const outside = !MK.design || !hitTest(p0);
-    if(outside && ((MK.zoom||1)>1 || e.button===1)){
-      e.preventDefault(); MK.drag={type:'pan',sx:e.clientX,sy:e.clientY,opx:MK.panX||0,opy:MK.panY||0};
-      $('mockOv').setPointerCapture(e.pointerId); return;
+    if(outside || e.button===1){
+      e.preventDefault(); if(MK.selected){ MK.selected=false; renderMock(); }
+      MK.drag={type:'pan',sx:e.clientX,sy:e.clientY,opx:MK.panX||0,opy:MK.panY||0};
+      $('mockOv').setPointerCapture(e.pointerId); $('mkStage').style.cursor='grabbing'; return;
     }
     if(!MK.design) return; let hit=hitTest(p0); const p=p0;
     if(!hit){ if(MK.selected){ MK.selected=false; renderMock(); } return; }  // clicar fora → desselecionar
@@ -597,24 +606,30 @@
     }
     syncProps(); renderMock();
   }
-  function onUp(e){ if(MK.drag){ const wasPan=MK.drag.type==='pan'; MK.drag=null; MK.dragging=false; try{$('mockOv').releasePointerCapture(e.pointerId);}catch(_){ } if(!wasPan)renderMock(); } }
+  function onUp(e){ if(MK.drag){ const wasPan=MK.drag.type==='pan'; MK.drag=null; MK.dragging=false; try{$('mockOv').releasePointerCapture(e.pointerId);}catch(_){ } $('mkStage').style.cursor=''; if(!wasPan)renderMock(); } }
   // ZOOM da workspace
   window.mockZoom=function(factor,cxClient,cyClient){
-    const old=MK.zoom||1, nz=Math.max(0.4,Math.min(6, old*factor));
+    const old=MK.zoom||1, nz=Math.max(0.5,Math.min(8, old*factor));
     if(nz===old) return;
-    // manter o ponto sob o cursor ~fixo
-    if(cxClient!=null){ const wrap=$('mkWrap'); const r=wrap.getBoundingClientRect();
-      const ox=cxClient-(r.left+ (MK.panX||0)*0), oy=cyClient-r.top; // simplificado
-      MK.panX=(MK.panX||0)-((cxClient-(r.left+r.width/2)))*(nz/old-1);
-      MK.panY=(MK.panY||0)-((cyClient-(r.top+r.height/2)))*(nz/old-1);
-    }
+    // manter o ponto sob o cursor fixo (pivô = centro do stage, igual à origem do transform)
+    const stage=$('mkStage'), sr=stage.getBoundingClientRect();
+    const Cx=sr.left+sr.width/2, Cy=sr.top+sr.height/2;
+    if(cxClient==null){ cxClient=Cx; cyClient=Cy; }
+    const px=MK.panX||0, py=MK.panY||0, k=nz/old;
+    MK.panX = cxClient - Cx - k*(cxClient - Cx - px);
+    MK.panY = cyClient - Cy - k*(cyClient - Cy - py);
     MK.zoom=nz; fitView();
   };
   window.mockResetZoom=function(){ MK.zoom=1; MK.panX=0; MK.panY=0; fitView(); };
   function bindStage(){
     const ov=$('mockOv'); ov.addEventListener('pointerdown',onDown); ov.addEventListener('pointermove',onMove); ov.addEventListener('pointerup',onUp); ov.addEventListener('pointercancel',onUp);
     const stage=$('mkStage');
-    stage.addEventListener('wheel',e=>{ if(!MK.active||!MK.scene) return; e.preventDefault(); mockZoom(e.deltaY<0?1.12:0.892, e.clientX, e.clientY); },{passive:false});
+    // trackpad: pinça (ctrl/cmd+wheel) = zoom · dois dedos = mover a vista · mouse: wheel = zoom
+    stage.addEventListener('wheel',e=>{ if(!MK.active||!MK.scene) return; e.preventDefault();
+      if(e.ctrlKey||e.metaKey){ const f=Math.exp(-e.deltaY*0.01); mockZoom(f, e.clientX, e.clientY); }
+      else if(Math.abs(e.deltaX)>Math.abs(e.deltaY)||e.shiftKey){ MK.panX=(MK.panX||0)-(e.shiftKey?e.deltaY:e.deltaX); fitView(); }
+      else { MK.panY=(MK.panY||0)-e.deltaY; MK.panX=(MK.panX||0)-e.deltaX; fitView(); }
+    },{passive:false});
     stage.addEventListener('dblclick',e=>{ if(MK.active) mockResetZoom(); });
     // Ctrl/Cmd+Z → desfaz no módulo Mockups (em captura, antes do editor de Design)
     window.addEventListener('keydown',e=>{
