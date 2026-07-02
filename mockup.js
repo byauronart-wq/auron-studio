@@ -812,7 +812,10 @@
     if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
     const name=prompt('Nome do template:', MK.sceneName||'Template'); if(name===null) return;
     const type=(prompt('Tipo: gallery (parede limpa p/ versão galeria) / room (divisão) / detail','gallery')||'gallery').toLowerCase().trim();
-    const q=currentCorners(); const quadN=q.map(p=>({x:p.x/MK.cw, y:p.y/MK.ch}));
+    // cantos da colocação; se ainda não há design/placa, guarda um quad centrado por defeito
+    const q=currentCorners();
+    const quadN = q ? q.map(p=>({x:p.x/MK.cw, y:p.y/MK.ch}))
+                    : [{x:0.3,y:0.3},{x:0.7,y:0.3},{x:0.7,y:0.7},{x:0.3,y:0.7}];
     const t={ id:'t'+Date.now(), name, type, created:Date.now(),
       scene:sceneToDataURL(), nativeW:MK.nativeW, nativeH:MK.nativeH,
       quadN, mask:MK.mask, maskRadius:MK.maskRadius, blend:MK.blend, opacity:MK.opacity,
