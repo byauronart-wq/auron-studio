@@ -101,6 +101,7 @@
     offs.forEach(item=>{const{L}=item;if(!L.displaceEnabled||!L.displaceTargets.length)return;if(!['caustic','perlin','noise','grid'].includes(L.type))return;const dm=getDispMap(L,dw,dh);L.displaceTargets.forEach(tid=>{const t=offs.find(x=>x.L.id===tid);if(t)applyDisplace(t.off,dm,L.displaceStrength,dw,dh);});});
     offs.forEach(item=>{const{L,off}=item;if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid'].includes(L.type))return;ec.globalAlpha=L.opacity/100;ec.globalCompositeOperation=L.blend==='add'?'lighter':L.blend;ec.drawImage(off,0,0);ec.globalAlpha=1;ec.globalCompositeOperation='source-over';});
     if(typeof applyGlobalAdjustments==='function')applyGlobalAdjustments(ec,dw,dh);
+    if(typeof applyDesignOpacity==='function')applyDesignOpacity(ec,dw,dh);
     return c;
   }
 

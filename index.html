@@ -399,6 +399,14 @@ body.simple .pro{display:none!important}
     <div class="sec">Ajustes globais</div>
     <div style="font-size:7px;color:var(--m1);line-height:1.55;margin-bottom:8px;letter-spacing:.02em">Optimizado para impressão UV sobre acrílico translúcido com retroiluminação LED · double-click no número para reset</div>
 
+    <div class="gsub">Opacidade / Translucidez</div>
+    <div class="grow"><span class="lb">Opacidade</span>
+      <button class="gstep" onclick="gStep('gOpac',-5)" title="−5">−</button>
+      <input type="range" min="0" max="100" value="100" id="gOpac" oninput="el('gOpacV').value=this.value;render()">
+      <button class="gstep" onclick="gStep('gOpac',5)" title="+5">+</button>
+      <input type="number" min="0" max="100" value="100" id="gOpacV" class="gnum" oninput="el('gOpac').value=this.value;render()" ondblclick="gReset('gOpac',100)"><span class="gunit">%</span>
+    </div>
+
     <div class="gsub">Tonal</div>
     <div class="grow"><span class="lb">Brilho</span>
       <button class="gstep" onclick="gStep('gBr',-5)" title="−5">−</button>
@@ -1731,6 +1739,14 @@ function applyGlobalAdjustments(targetCtx,w,h){
   }
   targetCtx.putImageData(id,0,0);
 }
+// OPACIDADE / TRANSLUCIDEZ global do design — multiplica o canal alfa de toda a composição
+function applyDesignOpacity(targetCtx,w,h){
+  const op=_gv('gOpac',100)/100;
+  if(op>=1) return;
+  const id=targetCtx.getImageData(0,0,w,h), d=id.data;
+  for(let i=3;i<d.length;i+=4) d[i]=cl(d[i]*op);
+  targetCtx.putImageData(id,0,0);
+}
 
 // ═══ RENDER ══════════════════════════════════════════════════════════════════
 // Coalesce multiple render() calls per frame into one (huge perf win quando se arrasta sliders)
@@ -1812,6 +1828,8 @@ function _renderActual(hq){
   // global noise (último — para que o grão fique por cima de toda a correcção tonal)
   const gn=el('gNoise').value/100;
   if(gn>0){const d=rc.getImageData(0,0,cw,ch);const dat=d.data;const a=gn*.04;for(let i=0;i<dat.length;i+=4){const n=(Math.random()-.5)*255*a;dat[i]=cl(dat[i]+n);dat[i+1]=cl(dat[i+1]+n);dat[i+2]=cl(dat[i+2]+n);}rc.putImageData(d,0,0);}
+  // OPACIDADE / TRANSLUCIDEZ do design — multiplica o alfa de toda a composição
+  applyDesignOpacity(rc,cw,ch);
 
   // reduzir o buffer de alta resolução para o canvas do ecrã
   if(SS>1){ctx.clearRect(0,0,dw,ch0);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(RT,0,0,dw,ch0);}
@@ -3102,7 +3120,7 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
 }
 async function saveProject(){
   const data={version:10,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
-    global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0},
+    global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
     layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,displaceTargets:[...L.displaceTargets]}))};
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
   const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
@@ -3206,6 +3224,7 @@ async function exportPNG(){
       applyGlobalAdjustments(ec,pw,ph);
       // ruído por cima de tudo
       const exGn=el('gNoise').value/100;if(exGn>0){const id=ec.getImageData(0,0,pw,ph);const dat=id.data;const a=exGn*.04;for(let i=0;i<dat.length;i+=4){const n=(Math.random()-.5)*255*a;dat[i]=cl(dat[i]+n);dat[i+1]=cl(dat[i+1]+n);dat[i+2]=cl(dat[i+2]+n);}ec.putImageData(id,0,0);}
+      applyDesignOpacity(ec,pw,ph);
       // recorte do formato do painel (círculo/oval/arredondado) — igual ao preview
       applyPanelMask(ec,pw,ph);
       ex.toBlob(async blob=>{
@@ -3602,7 +3621,7 @@ window.addEventListener('keydown',e=>{
       <select id="mkSize" onchange="mockSetSize(this.value)"><option value="a4">A4</option><option value="a3" selected>A3</option><option value="a2">A2</option><option value="custom">Personalizado</option></select>
     </div>
     <div class="mk-row" id="mkCustomRow" style="display:none"><span>cm</span><input type="number" id="mkCustomW" value="30" min="1" style="width:56px" oninput="mockSetCustom('w',this.value)"><span style="color:#46606e">×</span><input type="number" id="mkCustomH" value="30" min="1" style="width:56px" oninput="mockSetCustom('h',this.value)"></div>
-    <div class="mk-row"><button class="mk-b" id="mkPerspBtn" onclick="mockTogglePersp()">Perspetiva</button><button class="mk-b" id="mkFillBtn" onclick="mockToggleFill()">Preencher placa</button><button class="mk-b" id="mkFrostBtn" onclick="mockToggleFrost()">Vidro fosco</button></div>
+    <div class="mk-row"><button class="mk-b" id="mkPerspBtn" onclick="mockTogglePersp()">Perspetiva</button></div>
     <div class="mk-row"><button class="mk-b" onclick="mockRotate90()" title="Rodar 90°">⟳ 90°</button><button class="mk-b" onclick="mockFlipH()" title="Espelhar horizontalmente">⇄ Espelhar</button><button class="mk-b" onclick="mockSideView('l')" title="Vista 3/4 esquerda">◧ Lat. esq.</button><button class="mk-b" onclick="mockSideView('r')" title="Vista 3/4 direita">◨ Lat. dir.</button></div>
     <div class="mk-row" style="flex-basis:100%;margin-top:4px"><span style="color:#6f8a98;font-size:10px;letter-spacing:.1em;text-transform:uppercase">Luz &amp; realismo</span></div>
     <div class="mk-row"><span>Derrame de luz</span><input type="range" id="mkSpill" min="0" max="100" value="0" oninput="mockSetSpill(this.value)"><span class="mk-v" id="mkSpillV">0</span></div>
@@ -3610,7 +3629,6 @@ window.addEventListener('keydown',e=>{
     <div class="mk-row"><span>Sombra (tamanho)</span><input type="range" id="mkShSize" min="0" max="100" value="35" oninput="mockSetShadowSize(this.value)"><span class="mk-v" id="mkShSizeV">35</span></div>
     <div class="mk-row"><span>Ângulo luz</span><input type="range" id="mkShAng" min="0" max="360" value="135" oninput="mockSetShadowAngle(this.value)"><span class="mk-v" id="mkShAngV">135</span></div>
     <div class="mk-row"><span>Espessura (acrílico)</span><input type="range" id="mkThick" min="0" max="100" value="30" oninput="mockSetThickness(this.value)"><span class="mk-v" id="mkThickV">30</span></div>
-    <div class="mk-row"><span>Translucidez</span><input type="range" id="mkTransl" min="0" max="100" value="20" oninput="mockSetTranslucency(this.value)"><span class="mk-v" id="mkTranslV">20</span></div>
     <div class="mk-row"><span>Reflexo (brilho)</span><input type="range" id="mkReflect" min="0" max="100" value="0" oninput="mockSetReflect(this.value)"><span class="mk-v" id="mkReflectV">0</span></div>
     <div class="mk-row"><span>Reflexo (ângulo)</span><input type="range" id="mkRefAng" min="0" max="360" value="135" oninput="mockSetReflectAngle(this.value)"><span class="mk-v" id="mkRefAngV">135</span></div>
     <div class="mk-row"><span>Ambiente (luz+sombra+reflexo da sala)</span><input type="range" id="mkEnv" min="0" max="100" value="60" oninput="mockSetEnv(this.value)"><span class="mk-v" id="mkEnvV">60</span></div>
@@ -3622,7 +3640,7 @@ window.addEventListener('keydown',e=>{
       <div class="mk-row"><span>Luz · largura</span><input type="range" id="mkBeamW" min="4" max="100" value="40" oninput="mockSetBeamWidth(this.value)"><span class="mk-v" id="mkBeamWV">40</span></div>
       <div class="mk-row"><span>Luz · suavidade</span><input type="range" id="mkBeamS" min="0" max="100" value="55" oninput="mockSetBeamSoft(this.value)"><span class="mk-v" id="mkBeamSV">55</span></div>
     </div>
-    <div class="mk-hint">Vidro translúcido: vê-se a parede atrás. <b>Translucidez</b> = parede visível através da cor · <b>Reflexo (ângulo)</b> = a faixa de brilho varre o vidro (como um reflexo real) · <b>Vidro fosco</b> = acrílico mate · <b>Preencher placa</b> = placa sólida com a cor da arte.</div>
+    <div class="mk-hint"><b>Ambiente</b> = realces e reflexo da sala no acrílico brilhante · <b>Luz de janela</b> = faixa de sol sobre a placa (usa <b>Auto (da cena)</b> p/ alinhar) · <b>Reflexo (ângulo)</b> = direção do brilho especular.</div>
   </div>
 </div>
 <div id="mkLib" hidden>
