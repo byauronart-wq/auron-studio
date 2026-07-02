@@ -365,10 +365,6 @@ body.simple .pro{display:none!important}
 <aside class="lpanel" id="leftPanel">
   <div class="ph"><span class="pht">Projecto</span><button class="m-btn" onclick="togglePanel('L')" style="padding:2px 6px;font-size:9px">×</button></div>
   <div class="ps">
-    <div class="sec">Produto</div>
-    <div class="chips" id="prodChips"></div>
-    <div class="bhi" style="padding-left:0;font-size:7px;margin-top:4px">Escolhe o produto: define tamanho, formato e cena inicial. Depois importa a foto com o botão <b>Silhueta</b>.</div>
-    <div class="dv"></div>
     <div class="sec">Margens de impressão <span style="font-size:7px;color:var(--m1);text-transform:none;letter-spacing:0">(confirmar c/ fornecedor)</span></div>
     <div class="row">
       <span class="lb">Bleed</span>
@@ -464,18 +460,6 @@ body.simple .pro{display:none!important}
     </div>
 
     <div class="bhi" style="padding-left:0;margin-top:6px;font-size:7px">Para acrílico+LED: começa com Brilho 95%, Contraste +10, Pt. Preto 8, Vibrância +20. Ajusta Temp. para corrigir o tom do LED (azulado&nbsp;= +; amarelado&nbsp;= −).</div>
-    <div class="dv"></div>
-    <div class="sec">Formato</div><div class="chips" id="fmtChips"></div>
-    <div class="dv"></div>
-    <div class="sec">Gradiente</div><div class="chips" id="gradChips"></div>
-    <div class="dv"></div>
-    <div class="sec">Cenas</div><div class="chips" id="sceneChips"></div>
-  </div>
-  <div id="themePanel">
-    <div class="ph" style="border-top:1px solid var(--b0);border-bottom:none;padding:7px 10px 6px">
-      <span class="pht">Temas de cor</span><button class="m-btn" onclick="saveTheme()">+ Guardar</button>
-    </div>
-    <div style="padding:0 10px 8px"><div class="tlist" id="themeList"></div></div>
   </div>
 </aside>
 
@@ -881,7 +865,7 @@ function drawBlob(oc,L,cw,ch){
     const softPx=Math.max(1,(L.ringsSoft||6)*Math.min(cw,ch)/600);
     for(let i=n;i>=0;i--){
       const t=i/n;const ringR=baseR*(.08+.92*t);if(ringR<1)continue;
-      const ct=invert?1-t:t;const[r,g,b]=interpColor(L.colors,ct);
+      const ct=invert?t:1-t;const[r,g,b]=interpColor(L.colors,ct);
       const rC=document.createElement('canvas');rC.width=tS;rC.height=tS;const rc=rC.getContext('2d');
       rc.save();rc.translate(hc,hc);rc.rotate(L.rotate*Math.PI/180);rc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       rc.scale(ringR*sN*ax,ringR*sN*ay);drawSP(rc,pts);rc.restore();rc.fillStyle=`rgb(${cl(r)},${cl(g)},${cl(b)})`;rc.fill();
@@ -2167,6 +2151,8 @@ function addLayer(type){
   if(type==='perlin'){L.blend='multiply';L.opacity=60;L.perlinColor1='#001828';L.perlinColor2='#80e8f8';}
   if(type==='vector'){L.blend='source-over';L.opacity=100;L.vectorStroke='#ffffff';L.vectorStrokeWidth=2;}
   if(type==='mesh'){L.blend='screen';L.opacity=100;L.colors=['#2050a0','#40c0e0','#c0f4ff'];L.sizeX=70;L.sizeY=70;}
+  // gradiente selecionado no gerador → aplica-se a novas formas com gradiente
+  if(typeof SELECTED_GRAD!=='undefined'&&SELECTED_GRAD&&['blob','ring','veil'].includes(type))L.colors=[...SELECTED_GRAD];
   layers.push(L);activeId=L.id;renderList();render();updateHOv();
 }
 function addImageLayer(input){
@@ -2761,19 +2747,34 @@ function spinBtn(id,fn){ const b=el(id); if(b){b.classList.add('loading');b.disa
 window.gradSetDom=function(v){ GRAD_DOM=v; GRAD_DOMON=true; renderGradModal(); };
 window.gradToggleDom=function(){ GRAD_DOMON=!GRAD_DOMON; renderGradModal(); };
 function gradMakeLayer(colors,opts){ opts=opts||{}; const L=mkLayer('blob'); L.colors=[...colors]; L.blend='source-over'; L.name='Bloom';
-  if(GRAD_MODE==='linear'||opts.linear){ L.gradDir='linear'; L.gradAngle=(GRAD_LINDIR==='v')?90:0; L.sizeX=L.sizeY=opts.size||130; L.core=55; }
+  if(!opts.circular && (GRAD_MODE==='linear'||opts.linear)){ L.gradDir='linear'; L.gradAngle=(GRAD_LINDIR==='v')?90:0; L.sizeX=L.sizeY=opts.size||130; L.core=55; }
   else { L.gradDir='in-out'; L.fshape='circle'; L.core=opts.core!=null?opts.core:(55+Math.round(Math.random()*20)); L.sizeX=L.sizeY=opts.size||(40+Math.round(Math.random()*45)); }
   if(opts.posX!=null){L.posX=opts.posX;L.posY=opts.posY;}
   return L;
 }
-function gradRandomOne(){ spinBtn('gGenBtn',()=>{ saveUndo(); const L=gradMakeLayer(makePalette()); layers.push(L); activeId=L.id; renderList(); render(); updateHOv(); }); }
-function gradGrid(){ spinBtn('gGridBtn',()=>{ saveUndo(); const cols=4,rows=3,mx=100/(cols+1),my=100/(rows+1);
-  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){ const L=gradMakeLayer(makePalette(),{size:20,core:62,posX:Math.round(mx*(c+1)),posY:Math.round(my*(r+1))}); layers.push(L); }
-  activeId=layers[layers.length-1].id; renderList(); render(); updateHOv(); }); }
+let CUR_GRAD=null, SELECTED_GRAD=null, GRID_FAM='varias';
 function gradTemplates(){ try{return JSON.parse(localStorage.getItem('auronGrads')||'[]');}catch(e){return[];} }
-function gradSaveCurrent(){ const L=layers.find(l=>l.id===activeId); if(!L){alert('Seleciona uma camada com gradiente.');return;} const name=prompt('Nome do gradiente:','Grad '+(gradTemplates().length+1)); if(!name)return; const arr=gradTemplates(); arr.push({name,colors:[...L.colors]}); localStorage.setItem('auronGrads',JSON.stringify(arr)); renderGradModal(); }
-function gradApply(colors){ const L=layers.find(l=>l.id===activeId); if(L){ saveUndo(); L.colors=[...colors]; wireColors(L); updGB(L); render(); } else { saveUndo(); const NL=gradMakeLayer(colors); layers.push(NL); activeId=NL.id; renderList(); render(); } }
+// GERAR: só cria e pré-visualiza (NÃO aplica ao canvas)
+function gradGenerate(){ spinBtn('gGenBtn',()=>{ CUR_GRAD=makePalette(); renderGradPreview(); }); }
+function renderGradPreview(){ const cv=el('gradPrev'); if(!cv)return; const w=cv.width=cv.offsetWidth||360, h=cv.height=96; const x=cv.getContext('2d'); x.clearRect(0,0,w,h);
+  if(!CUR_GRAD){ x.fillStyle='#0a0e13'; x.fillRect(0,0,w,h); x.fillStyle='#4a6270'; x.font='11px DM Sans'; x.fillText('Clica em Gerar para ver o gradiente',12,h/2); return; }
+  if(GRAD_MODE==='linear'){ const g=(GRAD_LINDIR==='v')?x.createLinearGradient(0,0,0,h):x.createLinearGradient(0,0,w,0); CUR_GRAD.forEach((c,i)=>g.addColorStop(i/Math.max(1,CUR_GRAD.length-1),c)); x.fillStyle=g; x.fillRect(0,0,w,h); }
+  else { x.fillStyle='#0a0e13';x.fillRect(0,0,w,h); const g=x.createRadialGradient(w/2,h/2,2,w/2,h/2,h*0.62); CUR_GRAD.forEach((c,i)=>g.addColorStop(Math.min(1,i/Math.max(1,CUR_GRAD.length-1)),c)); x.fillStyle=g; x.beginPath();x.arc(w/2,h/2,h*0.46,0,Math.PI*2);x.fill(); }
+}
+function gradAddLayer(){ if(!CUR_GRAD){alert('Gera um gradiente primeiro.');return;} saveUndo(); const L=gradMakeLayer(CUR_GRAD); layers.push(L); activeId=L.id; renderList(); render(); updateHOv(); }
+function gradApplyActive(){ if(!CUR_GRAD)return; const L=layers.find(l=>l.id===activeId); if(!L){alert('Sem camada selecionada. Usa "Adicionar" ou seleciona uma camada na coluna direita.');return;} saveUndo(); L.colors=[...CUR_GRAD]; wireColors(L); updGB(L); render(); }
+function gradSelectCur(){ if(!CUR_GRAD)return; SELECTED_GRAD=[...CUR_GRAD]; updateGradSel(); }
+function gradClearSel(){ SELECTED_GRAD=null; updateGradSel(); }
+function updateGradSel(){ const b=el('gradSelBar'); if(b)b.style.display=SELECTED_GRAD?'flex':'none'; const sw=el('gradSelSw'); if(sw&&SELECTED_GRAD)sw.style.background='radial-gradient(circle,'+SELECTED_GRAD.join(',')+')'; }
+function gradSaveCurGrad(){ if(!CUR_GRAD){alert('Gera um gradiente primeiro.');return;} const name=prompt('Nome do gradiente:','Grad '+(gradTemplates().length+1)); if(!name)return; const arr=gradTemplates(); arr.push({name,colors:[...CUR_GRAD]}); localStorage.setItem('auronGrads',JSON.stringify(arr)); renderGradModal(); }
+function gradUse(colors){ CUR_GRAD=[...colors]; renderGradPreview(); const L=layers.find(l=>l.id===activeId); if(L){ saveUndo(); L.colors=[...colors]; wireColors(L); updGB(L); render(); } else { SELECTED_GRAD=[...colors]; updateGradSel(); } }
 function gradDelTemplate(i){ const arr=gradTemplates(); arr.splice(i,1); localStorage.setItem('auronGrads',JSON.stringify(arr)); renderGradModal(); }
+function gradGrid(){ spinBtn('gGridBtn',()=>{ saveUndo(); const cols=4,rows=3,mx=100/(cols+1),my=100/(rows+1);
+  const famBase=(GRAD_DOMON&&GRAD_DOM)?hexHue(GRAD_DOM):(CUR_GRAD?hexHue(CUR_GRAD[0]):Math.random()*360);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const pal=(GRID_FAM==='family')?randGradient(GRAD_STYLE,GRAD_NC,famBase+(Math.random()-.5)*44):randGradient(GRAD_STYLE,GRAD_NC,null);
+    const L=gradMakeLayer(pal,{circular:true,size:20,core:62,posX:Math.round(mx*(c+1)),posY:Math.round(my*(r+1))}); layers.push(L); }
+  activeId=layers[layers.length-1].id; renderList(); render(); updateHOv(); }); }
 function openGradModal(){ el('gradModal').hidden=false; renderGradModal(); }
 function closeGradModal(){ el('gradModal').hidden=true; }
 function renderGradModal(){
@@ -2788,19 +2789,28 @@ function renderGradModal(){
       '<button class="mk-chip2'+(GRAD_DOMON?' on':'')+'" onclick="gradToggleDom()">'+(GRAD_DOMON?'Ligada':'Desligada')+'</button>'+
       '<input type="color" value="'+GRAD_DOM+'" oninput="gradSetDom(this.value)" style="width:40px;height:32px;border:1px solid #1d2832;border-radius:8px;background:none;padding:2px;cursor:pointer">'+
       '<span style="font-size:11px;color:#7d97a6">gera o gradiente à volta desta cor</span></div>'+
-    '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
-      '<button class="mk-b pri" id="gGenBtn" onclick="gradRandomOne()">🎲 Gerar</button>'+
-      '<button class="mk-b" id="gGridBtn" onclick="gradGrid()">Grelha 4×3</button>'+
-      '<button class="mk-b" onclick="gradSaveCurrent()">Guardar gradiente atual</button></div>';
+    '<div class="mk-genlbl" style="margin-top:12px">Pré-visualização</div>'+
+    '<canvas id="gradPrev" style="width:100%;height:96px;border-radius:8px;border:1px solid #1d2832;display:block"></canvas>'+
+    '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+      '<button class="mk-b pri" id="gGenBtn" onclick="gradGenerate()">🎲 Gerar</button>'+
+      '<button class="mk-b" onclick="gradAddLayer()">＋ Adicionar ao canvas</button>'+
+      '<button class="mk-b" onclick="gradApplyActive()">Aplicar à camada</button>'+
+      '<button class="mk-b" onclick="gradSelectCur()">Selecionar p/ nova forma</button>'+
+      '<button class="mk-b" onclick="gradSaveCurGrad()">Guardar template</button></div>'+
+    '<div class="mk-genlbl" style="margin-top:14px">Grelha de blooms</div>'+
+    '<div class="mk-genchips" id="gGf"></div>'+
+    '<div style="margin-top:8px"><button class="mk-b" id="gGridBtn" onclick="gradGrid()">Gerar grelha 4×3</button></div>';
   const mk=(host,arr,cur,fn)=>{ const h=el(host); if(!h)return; h.innerHTML=''; arr.forEach(([v,lb])=>{const b=document.createElement('button');b.className='mk-chip2'+(cur===v?' on':'');b.textContent=lb;b.onclick=()=>fn(v);h.appendChild(b);}); };
   mk('gGs',styles,GRAD_STYLE,v=>{GRAD_STYLE=v;renderGradModal();});
   mk('gGm',[['circular','Circular'],['linear','Linear']],GRAD_MODE,v=>{GRAD_MODE=v;renderGradModal();});
   if(GRAD_MODE==='linear') mk('gGd',[['h','Horizontal'],['v','Vertical']],GRAD_LINDIR,v=>{GRAD_LINDIR=v;renderGradModal();});
   mk('gGn',[[2,'2'],[3,'3'],[4,'4'],[5,'5']],GRAD_NC,v=>{GRAD_NC=+v;renderGradModal();});
+  mk('gGf',[['varias','Várias cores'],['family','Uma família (cor dominante)']],GRID_FAM,v=>{GRID_FAM=v;renderGradModal();});
+  renderGradPreview();
   const grid=el('gradTpls'); if(!grid)return; grid.innerHTML=''; const tpls=gradTemplates();
-  if(!tpls.length){ grid.innerHTML='<div class="mk-genlbl">Ainda sem templates. Gera um gradiente e clica “Guardar gradiente atual”.</div>'; return; }
+  if(!tpls.length){ grid.innerHTML='<div class="mk-genlbl">Ainda sem templates. Gera um gradiente e clica “Guardar template”.</div>'; return; }
   tpls.forEach((t,i)=>{ const card=document.createElement('div');card.className='mk-card';
-    const sw=document.createElement('div');sw.style.cssText='height:64px;cursor:pointer;background:radial-gradient(circle at 50% 50%,'+t.colors.join(',')+')';sw.title='Aplicar';sw.onclick=()=>gradApply(t.colors);
+    const sw=document.createElement('div');sw.style.cssText='height:64px;cursor:pointer;background:radial-gradient(circle at 50% 50%,'+t.colors.join(',')+')';sw.title='Usar (aplica à camada ativa, ou seleciona p/ nova forma)';sw.onclick=()=>gradUse(t.colors);
     const lbl=document.createElement('div');lbl.className='mk-cardlbl';lbl.textContent=t.name;
     const del=document.createElement('button');del.className='mk-del';del.textContent='✕';del.onclick=e=>{e.stopPropagation();gradDelTemplate(i);};
     card.append(sw,lbl,del);grid.appendChild(card); });
@@ -3053,7 +3063,7 @@ const DEFAULT_THEMES=[
   {id:'mon',name:'Monocromo',palettes:[['#101010','#404040','#808080','#c0c0c0'],['#d0d0d0','#ffffff']]},
 ];
 function renderThemes(){
-  const list=el('themeList');list.innerHTML='';
+  const list=el('themeList');if(!list)return;list.innerHTML='';
   themes.forEach((t,ti)=>{
     const item=document.createElement('div');item.className='titem';
     const sw=document.createElement('div');sw.className='tsws';(t.palettes[0]||[]).slice(0,6).forEach(c=>{const s=document.createElement('div');s.className='tsw';s.style.background=c;sw.appendChild(s);});
@@ -3435,11 +3445,11 @@ function instantiateScene(k){
   return out;
 }
 function buildPresets(){
-  const pc=el('prodChips');PRODUCTS.forEach(p=>{const b=document.createElement('button');b.className='chip';b.dataset.pid=p.id;b.textContent=p.name;b.title=`${p.w}×${p.h}mm`;b.addEventListener('click',()=>applyProduct(p));pc.appendChild(b);});
-  const fc=el('fmtChips');FMT_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{W=p.w;H=p.h;panelShape=p.s;enforceSquareIfNeeded();el('cwrap').style.borderRadius=panelR();document.querySelectorAll('.s-btn2').forEach(x=>x.classList.remove('on'));document.querySelector(`[data-s="${p.s}"]`)?.classList.add('on');setupCanvas();applyPanelClip();});fc.appendChild(b);});
-  const gc=el('gradChips');GRAD_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{const L=layers.find(l=>l.id===activeId);if(!L)return;saveUndo();L.colors=[...p.colors];wireColors(L);updGB(L);render();});gc.appendChild(b);});
-  const sc=el('sceneChips');const slabels={oceano:'Oceano',porsol:'Pôr do Sol',causticas:'Cáusticas',agua:'Água',bolha:'Bolha',hipnose:'Hipnose',silhoueta:'Silhoueta',aura:'Aura',estriado:'Vidro Estriado',orbita:'Órbita'};
-  Object.keys(SCENES).forEach(k=>{const b=document.createElement('button');b.className='chip';b.textContent=slabels[k]||k;b.addEventListener('click',()=>{saveUndo();layers=instantiateScene(k);applySceneBg(k);activeId=layers[0].id;renderList();render();updateHOv();});sc.appendChild(b);});
+  // secções Produto/Formato/Gradiente/Cenas removidas da coluna esquerda — guardas p/ segurança
+  const fc=el('fmtChips'); if(fc)FMT_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{W=p.w;H=p.h;panelShape=p.s;enforceSquareIfNeeded();el('cwrap').style.borderRadius=panelR();document.querySelectorAll('.s-btn2').forEach(x=>x.classList.remove('on'));document.querySelector(`[data-s="${p.s}"]`)?.classList.add('on');setupCanvas();applyPanelClip();});fc.appendChild(b);});
+  const gc=el('gradChips'); if(gc)GRAD_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{const L=layers.find(l=>l.id===activeId);if(!L)return;saveUndo();L.colors=[...p.colors];wireColors(L);updGB(L);render();});gc.appendChild(b);});
+  const sc=el('sceneChips'); if(sc){const slabels={oceano:'Oceano',porsol:'Pôr do Sol',causticas:'Cáusticas',agua:'Água',bolha:'Bolha',hipnose:'Hipnose',silhoueta:'Silhoueta',aura:'Aura',estriado:'Vidro Estriado',orbita:'Órbita'};
+  Object.keys(SCENES).forEach(k=>{const b=document.createElement('button');b.className='chip';b.textContent=slabels[k]||k;b.addEventListener('click',()=>{saveUndo();layers=instantiateScene(k);applySceneBg(k);activeId=layers[0].id;renderList();render();updateHOv();});sc.appendChild(b);});}
 }
 
 // ═══ INIT ════════════════════════════════════════════════════════════════════
@@ -3619,6 +3629,11 @@ window.addEventListener('keydown',e=>{
 <div id="gradModal" hidden>
   <div class="mk-libbox">
     <div class="mk-libhead"><b>Gerador de gradientes</b><span class="mk-sp"></span><button class="mk-b" onclick="closeGradModal()">Fechar</button></div>
+    <div id="gradSelBar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:#0f2530;border:1px solid #235;border-radius:8px">
+      <div id="gradSelSw" style="width:34px;height:22px;border-radius:5px;border:1px solid #235"></div>
+      <span style="font-size:11px;color:#bfe6f4">Gradiente selecionado — a próxima forma (Foco/Anel/Véu) vai usá-lo</span>
+      <span class="mk-sp"></span><button class="mk-b" onclick="gradClearSel()">Limpar</button>
+    </div>
     <div id="gradCtl"></div>
     <div class="mk-genlbl" style="margin-top:12px">Templates de gradiente (clica para aplicar)</div>
     <div id="gradTpls" class="mk-libgrid"></div>
