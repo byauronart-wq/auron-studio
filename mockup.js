@@ -463,6 +463,13 @@
       const R=document.createElement('canvas');R.width=w;R.height=h;const rx=R.getContext('2d');
       rx.save(); rx.translate(0,h); rx.scale(1,-1); rx.drawImage(H,0,0); rx.restore();
       rx.globalCompositeOperation='destination-in'; rx.drawImage(clipL,0,0); rx.globalCompositeOperation='source-over';
+      // SOMBRA da divisão a passar À FRENTE da placa (o que o Overlay dava) — só as sombras,
+      // sem escurecer as zonas neutras → mantém a cor viva. Mapa: parede≈branco, sombra<1.
+      const Sh=document.createElement('canvas');Sh.width=w;Sh.height=h;const shx=Sh.getContext('2d');
+      shx.filter='blur('+Math.max(2,0.014*mn)+'px) brightness(1.5) contrast(1.35)';
+      shx.drawImage(MK.scene,0,0,w,h); shx.filter='none';
+      shx.globalCompositeOperation='destination-in'; shx.drawImage(clipL,0,0); shx.globalCompositeOperation='source-over';
+      ctx2.globalCompositeOperation='multiply'; ctx2.globalAlpha=Math.min(0.55,amt*0.6); ctx2.drawImage(Sh,0,0);
       ctx2.globalCompositeOperation='screen';
       ctx2.globalAlpha=Math.min(0.45,amt*0.42); ctx2.drawImage(H,0,0);   // realce direto (janela)
       ctx2.globalAlpha=Math.min(0.25,amt*0.16); ctx2.drawImage(R,0,0);   // reflexo espelhado
@@ -696,15 +703,26 @@
     const NW=MK.nativeW||MK.scene.naturalWidth, NH=MK.nativeH||MK.scene.naturalHeight;
     const base=document.createElement('canvas'); base.width=NW; base.height=NH;
     const bx=base.getContext('2d'); bx.drawImage(MK.scene,0,0,NW,NH);
-    const sz=Math.round(Math.min(NW,NH)*0.19);           // tamanho do patch
+    const sz=Math.round(Math.min(NW,NH)*0.20);           // tamanho do patch
     const rx=(corner==='tr'||corner==='br')?NW-sz:0;      // canto destino
     const ry=(corner==='bl'||corner==='br')?NH-sz:0;
-    // amostra da MESMA coluna, deslocada para dentro (preserva o gradiente de luz vertical)
-    const insideY=(ry===0)? ry+Math.round(sz*1.25) : ry-Math.round(sz*1.25);
-    const sy=Math.max(0,Math.min(NH-sz,insideY));
+    // PREENCHIMENTO SUAVE (sem copiar blocos → sem duplicados):
+    // estica as linhas de parede LIMPA adjacentes (fora do patch) e faz a média + desfoque.
+    const rowY=(ry===0)? Math.min(NH-2, ry+sz) : Math.max(0, ry-2);   // linha interior (horizontal)
+    const colX=(rx===0)? Math.min(NW-2, rx+sz) : Math.max(0, rx-2);   // coluna interior (vertical)
+    const rowC=document.createElement('canvas'); rowC.width=sz; rowC.height=2;
+    rowC.getContext('2d').drawImage(base, rx, rowY, sz, 2, 0,0, sz,2);
+    const colC=document.createElement('canvas'); colC.width=2; colC.height=sz;
+    colC.getContext('2d').drawImage(base, colX, ry, 2, sz, 0,0, 2,sz);
     const patch=document.createElement('canvas'); patch.width=sz; patch.height=sz;
     const px=patch.getContext('2d');
-    px.drawImage(base, rx, sy, sz, sz, 0,0, sz,sz);
+    px.imageSmoothingEnabled=true;
+    px.drawImage(rowC,0,0,sz,2, 0,0, sz,sz);            // linha esticada na vertical
+    px.globalAlpha=0.5; px.drawImage(colC,0,0,2,sz, 0,0, sz,sz); px.globalAlpha=1;  // média c/ coluna esticada
+    // suaviza (garante ausência de qualquer artefacto)
+    const sm=document.createElement('canvas'); sm.width=sz; sm.height=sz; const smx=sm.getContext('2d');
+    smx.filter='blur('+Math.max(2,sz*0.07)+'px)'; smx.drawImage(patch,0,0); smx.filter='none';
+    px.clearRect(0,0,sz,sz); px.drawImage(sm,0,0);
     // máscara: opaca no exterior (canto), a esbater nas bordas viradas para dentro
     const mask=document.createElement('canvas'); mask.width=sz; mask.height=sz;
     const mx=mask.getContext('2d'); mx.fillStyle='#fff'; mx.fillRect(0,0,sz,sz);
