@@ -755,43 +755,62 @@
     if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
     corner=corner||'br';
     const NW=MK.nativeW||MK.scene.naturalWidth, NH=MK.nativeH||MK.scene.naturalHeight;
-    const base=document.createElement('canvas'); base.width=NW; base.height=NH;
-    const bx=base.getContext('2d'); bx.drawImage(MK.scene,0,0,NW,NH);
-    const sz=Math.round(Math.min(NW,NH)*0.20);           // tamanho do patch
-    const rx=(corner==='tr'||corner==='br')?NW-sz:0;      // canto destino
-    const ry=(corner==='bl'||corner==='br')?NH-sz:0;
-    // PREENCHIMENTO SUAVE (sem copiar blocos → sem duplicados):
-    // estica as linhas de parede LIMPA adjacentes (fora do patch) e faz a média + desfoque.
-    const rowY=(ry===0)? Math.min(NH-2, ry+sz) : Math.max(0, ry-2);   // linha interior (horizontal)
-    const colX=(rx===0)? Math.min(NW-2, rx+sz) : Math.max(0, rx-2);   // coluna interior (vertical)
-    const rowC=document.createElement('canvas'); rowC.width=sz; rowC.height=2;
-    rowC.getContext('2d').drawImage(base, rx, rowY, sz, 2, 0,0, sz,2);
-    const colC=document.createElement('canvas'); colC.width=2; colC.height=sz;
-    colC.getContext('2d').drawImage(base, colX, ry, 2, sz, 0,0, 2,sz);
-    const patch=document.createElement('canvas'); patch.width=sz; patch.height=sz;
-    const px=patch.getContext('2d');
-    px.imageSmoothingEnabled=true;
-    px.drawImage(rowC,0,0,sz,2, 0,0, sz,sz);            // linha esticada na vertical
-    px.globalAlpha=0.5; px.drawImage(colC,0,0,2,sz, 0,0, sz,sz); px.globalAlpha=1;  // média c/ coluna esticada
-    // suaviza (garante ausência de qualquer artefacto)
-    const sm=document.createElement('canvas'); sm.width=sz; sm.height=sz; const smx=sm.getContext('2d');
-    smx.filter='blur('+Math.max(2,sz*0.07)+'px)'; smx.drawImage(patch,0,0); smx.filter='none';
-    px.clearRect(0,0,sz,sz); px.drawImage(sm,0,0);
-    // máscara: opaca no exterior (canto), a esbater nas bordas viradas para dentro
+    // Normaliza: trabalha sempre como se o canto-alvo fosse "baixo-direita", através de flips.
+    // Assim o algoritmo só precisa de ser escrito uma vez, e serve para os 4 cantos.
+    const flipX=(corner==='tl'||corner==='bl'), flipY=(corner==='tl'||corner==='tr');
+    const work=document.createElement('canvas'); work.width=NW; work.height=NH;
+    const wctx=work.getContext('2d');
+    wctx.save(); wctx.translate(flipX?NW:0, flipY?NH:0); wctx.scale(flipX?-1:1, flipY?-1:1);
+    wctx.drawImage(MK.scene,0,0,NW,NH); wctx.restore();
+
+    const sz=Math.round(Math.min(NW,NH)*0.17);
+    const rx=NW-sz, ry=NH-sz;
+    // PREENCHIMENTO por ESPELHO DE TEXTURA (não é blur/média — continua o padrão real da parede,
+    // por isso não fica "óbvio": gradientes, grão e até luz continuam corretos em vez de ficar borrado).
+    // Bloco H: a coluna de parede LIMPA imediatamente à esquerda do patch, espelhada para colar na costura.
+    const Hs=Math.max(0,rx-sz);
+    const Hc=document.createElement('canvas'); Hc.width=sz; Hc.height=sz; const hctx=Hc.getContext('2d');
+    hctx.save(); hctx.translate(sz,0); hctx.scale(-1,1); hctx.drawImage(work,Hs,ry,sz,sz,0,0,sz,sz); hctx.restore();
+    // Bloco V: a linha de parede LIMPA imediatamente acima do patch, espelhada.
+    const Vs=Math.max(0,ry-sz);
+    const Vc=document.createElement('canvas'); Vc.width=sz; Vc.height=sz; const vctx=Vc.getContext('2d');
+    vctx.save(); vctx.translate(0,sz); vctx.scale(1,-1); vctx.drawImage(work,rx,Vs,sz,sz,0,0,sz,sz); vctx.restore();
+    // mistura os dois espelhos por proximidade à respetiva costura (perto da esquerda pesa H,
+    // perto do topo pesa V; no canto extremo, mais longe de ambas, fica ~50/50 — sem linha visível)
+    const hID=hctx.getImageData(0,0,sz,sz).data, vID=vctx.getImageData(0,0,sz,sz).data;
+    const outC=document.createElement('canvas'); outC.width=sz; outC.height=sz; const octx=outC.getContext('2d');
+    const outID=octx.createImageData(sz,sz), od=outID.data;
+    for(let y=0;y<sz;y++){ const wV=1-y/sz; for(let x=0;x<sz;x++){ const i=(y*sz+x)*4; const wH=1-x/sz, norm=(wH+wV)||1;
+      od[i]=(hID[i]*wH+vID[i]*wV)/norm; od[i+1]=(hID[i+1]*wH+vID[i+1]*wV)/norm; od[i+2]=(hID[i+2]*wH+vID[i+2]*wV)/norm; od[i+3]=255; } }
+    octx.putImageData(outID,0,0);
+    // desfoque GRADUAL: nítido junto às duas costuras (onde a continuidade da textura tem de bater
+    // certo) e progressivamente mais desfocado no canto profundo (a zona menos fiável da estimativa —
+    // esconde qualquer fragmento de objeto próximo que o espelho tenha apanhado por engano).
+    const blurC=document.createElement('canvas'); blurC.width=sz; blurC.height=sz; const bctx=blurC.getContext('2d');
+    bctx.filter='blur('+Math.max(2,sz*0.09)+'px)'; bctx.drawImage(outC,0,0); bctx.filter='none';
+    const sharpID=octx.getImageData(0,0,sz,sz), sd=sharpID.data;
+    const blurID=bctx.getImageData(0,0,sz,sz), bd=blurID.data;
+    for(let y=0;y<sz;y++){ for(let x=0;x<sz;x++){ const i=(y*sz+x)*4;
+      const depth=Math.min(1, Math.min(x,y)/(sz*0.55));   // 0 = junto a uma costura, 1 = canto profundo
+      sd[i]=sd[i]*(1-depth)+bd[i]*depth; sd[i+1]=sd[i+1]*(1-depth)+bd[i+1]*depth; sd[i+2]=sd[i+2]*(1-depth)+bd[i+2]*depth; } }
+    octx.putImageData(sharpID,0,0);
+    const patch=document.createElement('canvas'); patch.width=sz; patch.height=sz; const px=patch.getContext('2d');
+    px.filter='blur('+Math.max(0.6,sz*0.008)+'px)'; px.drawImage(outC,0,0); px.filter='none';
+    // máscara: opaca no canto extremo, esbatida junto às duas costuras (para fundir sem emenda)
     const mask=document.createElement('canvas'); mask.width=sz; mask.height=sz;
     const mx=mask.getContext('2d'); mx.fillStyle='#fff'; mx.fillRect(0,0,sz,sz);
-    const f=Math.round(sz*0.24); mx.globalCompositeOperation='destination-out';
-    const towardX=(rx===0)? {a:sz,b:sz-f} : {a:0,b:f};   // borda interior no eixo X
-    const towardY=(ry===0)? {a:sz,b:sz-f} : {a:0,b:f};   // borda interior no eixo Y
-    let gX=mx.createLinearGradient(towardX.a,0,towardX.b,0);
-    gX.addColorStop(0,'rgba(0,0,0,1)'); gX.addColorStop(1,'rgba(0,0,0,0)');
+    const f=Math.round(sz*0.30); mx.globalCompositeOperation='destination-out';
+    let gX=mx.createLinearGradient(0,0,f,0); gX.addColorStop(0,'rgba(0,0,0,1)'); gX.addColorStop(1,'rgba(0,0,0,0)');
     mx.fillStyle=gX; mx.fillRect(0,0,sz,sz);
-    let gY=mx.createLinearGradient(0,towardY.a,0,towardY.b);
-    gY.addColorStop(0,'rgba(0,0,0,1)'); gY.addColorStop(1,'rgba(0,0,0,0)');
+    let gY=mx.createLinearGradient(0,0,0,f); gY.addColorStop(0,'rgba(0,0,0,1)'); gY.addColorStop(1,'rgba(0,0,0,0)');
     mx.fillStyle=gY; mx.fillRect(0,0,sz,sz);
     mx.globalCompositeOperation='source-over';
     px.globalCompositeOperation='destination-in'; px.drawImage(mask,0,0); px.globalCompositeOperation='source-over';
-    bx.drawImage(patch, rx, ry);
+    wctx.drawImage(patch, rx, ry);
+    // desfaz o flip de normalização e exporta
+    const base=document.createElement('canvas'); base.width=NW; base.height=NH; const bx=base.getContext('2d');
+    bx.save(); bx.translate(flipX?NW:0, flipY?NH:0); bx.scale(flipX?-1:1, flipY?-1:1);
+    bx.drawImage(work,0,0); bx.restore();
     const img=new Image();
     img.onload=function(){ MK.scene=img; if(MK.design) buildMasked(); renderMock(); };
     img.src=base.toDataURL('image/png');
