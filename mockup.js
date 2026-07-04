@@ -191,21 +191,22 @@
   };
   window.mockSetTranslucency=function(v){ mkSnapshot(); MK.translucency=+v; $('mkTranslV').textContent=Math.round(v); renderMock(); };
   window.mockSetReflectAngle=function(v){ mkSnapshot(); MK.reflectAngle=+v; $('mkRefAngV').textContent=Math.round(v); renderMock(); };
-  window.mockSetThickness=function(v){ mkSnapshot(); MK.thickness=+v; $('mkThickV').textContent=Math.round(v); renderMock(); };
+  window.mockSetThickness=function(v){ mkSnapshot(); MK.thickness=Math.max(0,Math.min(100,+v||0)); $('mkThickV').textContent=Math.round(MK.thickness); renderMock(); };
   window.mockToggleFrost=function(){ mkSnapshot(true); MK.glassFrost=!MK.glassFrost; buildFinished(); const b=$('mkFrostBtn'); if(b){b.classList.toggle('on',MK.glassFrost);b.textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco';} renderMock(); };
-  window.mockSetSpill=function(v){ mkSnapshot(); MK.spill=+v; $('mkSpillV').textContent=Math.round(v); renderMock(); };
-  window.mockSetShadow=function(v){ mkSnapshot(); MK.shadow=+v; $('mkShadowV').textContent=Math.round(v); renderMock(); };
-  window.mockSetShadowSize=function(v){ mkSnapshot(); MK.shadowSize=+v; $('mkShSizeV').textContent=Math.round(v); renderMock(); };
+  const c01=v=>Math.max(0,Math.min(100,+v||0));   // clamp 0-100 (defensivo — evita nºs disparatados na UI/render)
+  window.mockSetSpill=function(v){ mkSnapshot(); MK.spill=c01(v); $('mkSpillV').textContent=Math.round(MK.spill); renderMock(); };
+  window.mockSetShadow=function(v){ mkSnapshot(); MK.shadow=c01(v); $('mkShadowV').textContent=Math.round(MK.shadow); renderMock(); };
+  window.mockSetShadowSize=function(v){ mkSnapshot(); MK.shadowSize=c01(v); $('mkShSizeV').textContent=Math.round(MK.shadowSize); renderMock(); };
   window.mockSetShadowAngle=function(v){ mkSnapshot(); MK.shadowAngle=+v; $('mkShAngV').textContent=Math.round(v); renderMock(); };
-  window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=+v; $('mkReflectV').textContent=Math.round(v); renderMock(); };
-  window.mockSetEnv=function(v){ mkSnapshot(); MK.env=+v; $('mkEnvV').textContent=Math.round(v); renderMock(); };
-  window.mockSetMirror=function(v){ mkSnapshot(); MK.mirror=+v; $('mkMirrorV').textContent=Math.round(v); renderMock(); };
+  window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=c01(v); $('mkReflectV').textContent=Math.round(MK.reflect); renderMock(); };
+  window.mockSetEnv=function(v){ mkSnapshot(); MK.env=c01(v); $('mkEnvV').textContent=Math.round(MK.env); renderMock(); };
+  window.mockSetMirror=function(v){ mkSnapshot(); MK.mirror=c01(v); $('mkMirrorV').textContent=Math.round(MK.mirror); renderMock(); };
   window.mockToggleBeam=function(){ mkSnapshot(true); MK.beamOn=!MK.beamOn; const b=$('mkBeamBtn'); if(b){b.classList.toggle('on',MK.beamOn); b.textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela';} const r=$('mkBeamRows'); if(r)r.style.display=MK.beamOn?'':'none'; renderMock(); };
-  window.mockSetBeam=function(v){ mkSnapshot(); MK.beam=+v; $('mkBeamV').textContent=Math.round(v); renderMock(); };
+  window.mockSetBeam=function(v){ mkSnapshot(); MK.beam=c01(v); $('mkBeamV').textContent=Math.round(MK.beam); renderMock(); };
   window.mockSetBeamAngle=function(v){ mkSnapshot(); MK.beamAngle=+v; $('mkBeamAngV').textContent=Math.round(v); renderMock(); };
-  window.mockSetBeamPos=function(v){ mkSnapshot(); MK.beamPos=+v; $('mkBeamPosV').textContent=Math.round(v); renderMock(); };
-  window.mockSetBeamWidth=function(v){ mkSnapshot(); MK.beamWidth=+v; $('mkBeamWV').textContent=Math.round(v); renderMock(); };
-  window.mockSetBeamSoft=function(v){ mkSnapshot(); MK.beamSoft=+v; $('mkBeamSV').textContent=Math.round(v); renderMock(); };
+  window.mockSetBeamPos=function(v){ mkSnapshot(); MK.beamPos=c01(v); $('mkBeamPosV').textContent=Math.round(MK.beamPos); renderMock(); };
+  window.mockSetBeamWidth=function(v){ mkSnapshot(); MK.beamWidth=c01(v); $('mkBeamWV').textContent=Math.round(MK.beamWidth); renderMock(); };
+  window.mockSetBeamSoft=function(v){ mkSnapshot(); MK.beamSoft=c01(v); $('mkBeamSV').textContent=Math.round(MK.beamSoft); renderMock(); };
   // alinha a faixa de luz com a direção da luz detetada na cena
   window.mockAutoBeam=function(){
     if(!MK.scene){ alert('Carrega uma cena primeiro.'); return; }
@@ -1045,7 +1046,8 @@
       MK.finish=t.finish||'none'; MK.fillPanel=!!t.fillPanel; MK.orient=t.orient||'v'; MK.size=t.size||'a3'; MK.customW=t.customW||30; MK.customH=t.customH||30;
       MK.spill=t.spill||0; MK.shadow=t.shadow||0; MK.shadowSize=(t.shadowSize!=null?t.shadowSize:35); MK.shadowAngle=(t.shadowAngle!=null?t.shadowAngle:135); MK.reflect=t.reflect||0;
       MK.glassFrost=!!t.glassFrost; MK.translucency=(t.translucency!=null?t.translucency:20); MK.reflectAngle=(t.reflectAngle!=null?t.reflectAngle:135); MK.thickness=(t.thickness!=null?t.thickness:30);
-      MK.beamOn=!!t.beamOn; MK.beam=(t.beam!=null?t.beam:55); MK.beamAngle=(t.beamAngle!=null?t.beamAngle:60); MK.beamPos=(t.beamPos!=null?t.beamPos:50); MK.beamWidth=(t.beamWidth!=null?t.beamWidth:40); MK.beamSoft=(t.beamSoft!=null?t.beamSoft:55); MK.env=(t.env!=null?t.env:60); MK.mirror=(t.mirror!=null?t.mirror:25);
+      const c01t=v=>Math.max(0,Math.min(100,+v||0));
+      MK.beamOn=!!t.beamOn; MK.beam=c01t(t.beam!=null?t.beam:55); MK.beamAngle=(t.beamAngle!=null?t.beamAngle:60); MK.beamPos=c01t(t.beamPos!=null?t.beamPos:50); MK.beamWidth=c01t(t.beamWidth!=null?t.beamWidth:40); MK.beamSoft=c01t(t.beamSoft!=null?t.beamSoft:55); MK.env=c01t(t.env!=null?t.env:60); MK.mirror=c01t(t.mirror!=null?t.mirror:25);
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
