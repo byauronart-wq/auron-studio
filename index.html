@@ -3632,6 +3632,7 @@ window.addEventListener('keydown',e=>{
     <div class="mk-row"><span>Reflexo (brilho)</span><input type="range" id="mkReflect" min="0" max="100" value="0" oninput="mockSetReflect(this.value)"><span class="mk-v" id="mkReflectV">0</span></div>
     <div class="mk-row"><span>Reflexo (ângulo)</span><input type="range" id="mkRefAng" min="0" max="360" value="135" oninput="mockSetReflectAngle(this.value)"><span class="mk-v" id="mkRefAngV">135</span></div>
     <div class="mk-row"><span>Ambiente (luz+sombra+reflexo da sala)</span><input type="range" id="mkEnv" min="0" max="100" value="60" oninput="mockSetEnv(this.value)"><span class="mk-v" id="mkEnvV">60</span></div>
+    <div class="mk-row"><span>Espelho (reflete a sala)</span><input type="range" id="mkMirror" min="0" max="100" value="25" oninput="mockSetMirror(this.value)"><span class="mk-v" id="mkMirrorV">25</span></div>
     <div class="mk-row"><button class="mk-b" id="mkBeamBtn" onclick="mockToggleBeam()" title="Faixa de sol que atravessa a placa, igual à que cai na parede">Luz de janela</button><button class="mk-b" onclick="mockAutoBeam()" title="Deteta a direção da luz na cena e alinha a faixa automaticamente">Auto (da cena)</button></div>
     <div id="mkBeamRows" style="display:none">
       <div class="mk-row"><span>Luz · intensidade</span><input type="range" id="mkBeam" min="0" max="100" value="55" oninput="mockSetBeam(this.value)"><span class="mk-v" id="mkBeamV">55</span></div>
@@ -3640,7 +3641,7 @@ window.addEventListener('keydown',e=>{
       <div class="mk-row"><span>Luz · largura</span><input type="range" id="mkBeamW" min="4" max="100" value="40" oninput="mockSetBeamWidth(this.value)"><span class="mk-v" id="mkBeamWV">40</span></div>
       <div class="mk-row"><span>Luz · suavidade</span><input type="range" id="mkBeamS" min="0" max="100" value="55" oninput="mockSetBeamSoft(this.value)"><span class="mk-v" id="mkBeamSV">55</span></div>
     </div>
-    <div class="mk-hint"><b>Ambiente</b> = realces e reflexo da sala no acrílico brilhante · <b>Luz de janela</b> = faixa de sol sobre a placa (usa <b>Auto (da cena)</b> p/ alinhar) · <b>Reflexo (ângulo)</b> = direção do brilho especular.</div>
+    <div class="mk-hint"><b>Ambiente</b> = realces e sombra da sala no acrílico brilhante · <b>Espelho</b> = reflexo nítido/desfocado dos elementos da divisão (vidro) · <b>Luz de janela</b> = faixa de sol sobre a placa (usa <b>Auto (da cena)</b> p/ alinhar) · <b>Reflexo (ângulo)</b> = direção do brilho especular.</div>
   </div>
 </div>
 <div id="mkLib" hidden>
