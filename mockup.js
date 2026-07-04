@@ -418,6 +418,18 @@
     rgx.globalCompositeOperation='destination-out'; rgx.drawImage(inner,0,0); rgx.globalCompositeOperation='source-over';
     return ring;
   }
+  // tamanho REAL da peça no frame (não da cena) — para escalar corretamente anéis/molduras
+  // com base na máscara já posicionada, em vez do tamanho do ecrã/export (que pode ser bem maior)
+  function maskExtent(mask,w,h){
+    const S=48,c=document.createElement('canvas');c.width=S;c.height=S;const x=c.getContext('2d');
+    x.drawImage(mask,0,0,w,h,0,0,S,S);
+    const d=x.getImageData(0,0,S,S).data;
+    let minX=S,maxX=-1,minY=S,maxY=-1;
+    for(let y=0;y<S;y++)for(let xx=0;xx<S;xx++){ const a=d[(y*S+xx)*4+3]; if(a>16){ if(xx<minX)minX=xx; if(xx>maxX)maxX=xx; if(y<minY)minY=y; if(y>maxY)maxY=y; } }
+    if(maxX<0) return Math.min(w,h);
+    const sx=w/S, sy=h/S;
+    return Math.min((maxX-minX+1)*sx, (maxY-minY+1)*sy);
+  }
   // compõe a peça sobre a cena (ctx2) com realismo de luz (sombra + derrame + reflexo)
   function compositeDesignOnto(ctx2, ratio){
     if(!MK.design) return;
@@ -444,7 +456,7 @@
     }
     // 1.5) AO / bisel — sombra de contacto fina ao longo do REBORDO REAL da peça (já posicionada no frame)
     if(full && hasPanel){
-      const band=Math.max(2,mn*0.03);
+      const band=Math.max(2,maskExtent(shadowSilh,w,h)*0.03);
       const ring=edgeRing(shadowSilh,w,h,band);
       ring.getContext('2d').globalCompositeOperation='source-in'; ring.getContext('2d').fillStyle='rgba(0,0,0,1)'; ring.getContext('2d').fillRect(0,0,w,h);
       ctx2.globalCompositeOperation='multiply'; ctx2.globalAlpha=0.32; ctx2.drawImage(ring,0,0);
@@ -551,7 +563,7 @@
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
       // FRESNEL — TODO o rebordo REAL da peça (já posicionada/rodada no frame) mais claro,
       // via anel de erosão (edgeRing) em vez de desenhar a forma nas dimensões erradas.
-      const band=Math.max(3,mn*0.045);
+      const band=Math.max(3,maskExtent(clipG,w,h)*0.045);
       const halo=edgeRing(clipG,w,h,band);            // halo largo e suave
       const line=edgeRing(clipG,w,h,Math.max(1.2,band*0.22)); // linha fina nítida na aresta exata
       const whiten=(ring,alpha)=>{ const rc=ring.getContext('2d'); rc.globalCompositeOperation='source-in'; rc.globalAlpha=alpha; rc.fillStyle='#fff'; rc.fillRect(0,0,w,h); rc.globalAlpha=1; rc.globalCompositeOperation='source-over'; };
