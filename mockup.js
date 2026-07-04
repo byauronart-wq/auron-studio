@@ -403,6 +403,21 @@
   function renderDesignLayer(w,h,ratio){ return renderLayerOf(MK.finished||MK.masked,w,h,ratio); }
   // a placa como retângulo SÓLIDO (forma), p/ sombra e reflexo definirem a peça mesmo com arte transparente
   function renderShapeLayer(w,h,ratio){ return renderLayerOf(MK.shapeMask,w,h,ratio); }
+  // anel fino junto ao REBORDO REAL da peça (já posicionada/rodada/em perspetiva no frame) —
+  // erosão por raster: desfoca a máscara por `insetPx` e usa o resultado quase-opaco como "interior
+  // seguro"; subtraindo-o da máscara original sobra só uma faixa de largura ~insetPx junto à aresta.
+  // Funciona em qualquer posição/rotação/perspetiva, ao contrário de desenhar shapePath no frame inteiro.
+  function edgeRing(clipMask,w,h,insetPx){
+    const ring=document.createElement('canvas');ring.width=w;ring.height=h;const rgx=ring.getContext('2d');
+    rgx.drawImage(clipMask,0,0);
+    const inner=document.createElement('canvas');inner.width=w;inner.height=h;const ix=inner.getContext('2d');
+    ix.filter='blur('+Math.max(1,insetPx)+'px)'; ix.drawImage(clipMask,0,0); ix.filter='none';
+    const id=ix.getImageData(0,0,w,h),d=id.data;
+    for(let i=3;i<d.length;i+=4) d[i]=d[i]>248?255:0;   // threshold: só o que sobreviveu quase intacto ao blur
+    ix.putImageData(id,0,0);
+    rgx.globalCompositeOperation='destination-out'; rgx.drawImage(inner,0,0); rgx.globalCompositeOperation='source-over';
+    return ring;
+  }
   // compõe a peça sobre a cena (ctx2) com realismo de luz (sombra + derrame + reflexo)
   function compositeDesignOnto(ctx2, ratio){
     if(!MK.design) return;
@@ -427,14 +442,12 @@
       // intensidade → opacidade (até bem escuro p/ sombras fortes e pequenas)
       ctx2.globalAlpha=Math.min(.95,MK.shadow/100*0.95); ctx2.drawImage(b,0,0); ctx2.globalAlpha=1;
     }
-    // 1.5) AO / bisel — sombra de contacto fina ao longo de TODO o rebordo (a peça "assenta" no espaço)
+    // 1.5) AO / bisel — sombra de contacto fina ao longo do REBORDO REAL da peça (já posicionada no frame)
     if(full && hasPanel){
-      const band=Math.max(2,mn*0.035);
-      const ao=document.createElement('canvas');ao.width=w;ao.height=h;const aox=ao.getContext('2d');
-      aox.save(); shapePath(aox,w,h); aox.clip();
-      shapePath(aox,w,h); aox.lineWidth=band*2; aox.strokeStyle='rgba(0,0,0,.4)'; aox.filter='blur('+(band*0.5)+'px)'; aox.stroke();
-      aox.restore();
-      ctx2.globalCompositeOperation='multiply'; ctx2.globalAlpha=0.32; ctx2.drawImage(ao,0,0);
+      const band=Math.max(2,mn*0.03);
+      const ring=edgeRing(shadowSilh,w,h,band);
+      ring.getContext('2d').globalCompositeOperation='source-in'; ring.getContext('2d').fillStyle='rgba(0,0,0,1)'; ring.getContext('2d').fillRect(0,0,w,h);
+      ctx2.globalCompositeOperation='multiply'; ctx2.globalAlpha=0.32; ctx2.drawImage(ring,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 2) DERRAME de luz / halo colorido (peça → ambiente) — contido, não "projetor"
@@ -536,15 +549,16 @@
       gx2.globalCompositeOperation='destination-in'; gx2.drawImage(clipG,0,0); gx2.globalCompositeOperation='source-over';
       ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=1; ctx2.drawImage(G,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
-      // FRESNEL — TODO o rebordo do vidro mais claro (reflexão rasante), não só o topo.
-      // Técnica: contorno riscado (stroke) largo+desfocado (halo interior) + linha fina nítida na aresta exata.
-      const fr=document.createElement('canvas');fr.width=w;fr.height=h;const frx=fr.getContext('2d');
-      const band=Math.max(3,mn*0.05);
-      frx.save(); shapePath(frx,w,h); frx.clip();
-      shapePath(frx,w,h); frx.lineWidth=band*2; frx.strokeStyle='rgba(255,255,255,.5)'; frx.filter='blur('+(band*0.4)+'px)'; frx.stroke();
-      shapePath(frx,w,h); frx.lineWidth=Math.max(1.2,band*0.18); frx.strokeStyle='rgba(255,255,255,.9)'; frx.filter='none'; frx.stroke();
-      frx.restore();
-      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=0.5; ctx2.drawImage(fr,0,0);
+      // FRESNEL — TODO o rebordo REAL da peça (já posicionada/rodada no frame) mais claro,
+      // via anel de erosão (edgeRing) em vez de desenhar a forma nas dimensões erradas.
+      const band=Math.max(3,mn*0.045);
+      const halo=edgeRing(clipG,w,h,band);            // halo largo e suave
+      const line=edgeRing(clipG,w,h,Math.max(1.2,band*0.22)); // linha fina nítida na aresta exata
+      const whiten=(ring,alpha)=>{ const rc=ring.getContext('2d'); rc.globalCompositeOperation='source-in'; rc.globalAlpha=alpha; rc.fillStyle='#fff'; rc.fillRect(0,0,w,h); rc.globalAlpha=1; rc.globalCompositeOperation='source-over'; };
+      whiten(halo,1); whiten(line,1);
+      ctx2.globalCompositeOperation='screen';
+      ctx2.globalAlpha=0.5; ctx2.drawImage(halo,0,0);
+      ctx2.globalAlpha=0.85; ctx2.drawImage(line,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 3.7) ESPELHO — reflexo verdadeiro da sala (nítido↔desfocado conforme o slider), tingido de vidro.
