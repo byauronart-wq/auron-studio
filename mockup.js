@@ -24,6 +24,10 @@
     env:60,                                                        // ambiente: luz/sombra da divisão + reflexo de sala na placa brilhante
     mirror:25,                                                     // espelho: reflexo verdadeiro (nítido/desfocado) da sala, tingido de vidro
     ink:65,                                                        // densidade da tinta UV (100=opaca · menos=parede visível através das zonas claras)
+    vivid:40,                                                      // vivacidade da tinta (saturação/contraste extra)
+    edgeGlow:50, edgeWidth:50,                                     // aresta (fresnel): intensidade e largura
+    contact:50,                                                    // sombra de contacto (AO) junto ao rebordo
+    glass:50,                                                      // vidro: refração + tinta neutra (ver através)
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null, selected:false,
@@ -76,9 +80,10 @@
     // por defeito, a peça é ACRÍLICO (aspeto de produto) na 1ª colocação — evita o look "chapado/baço"
     if(firstDesign && (!MK.finish || MK.finish==='none')){
       MK.finish='acrylic'; MK.shadow=22; MK.reflect=0; MK.spill=25; MK.translucency=0; MK.env=15; MK.mirror=25; MK.ink=65;
+      MK.vivid=40; MK.edgeGlow=50; MK.edgeWidth=50; MK.contact=50; MK.glass=50; MK.fillPanel=false; MK.glassFrost=false;
       if($('mkFinish'))$('mkFinish').value='acrylic';
-      const ir0=$('mkInkRow'); if(ir0)ir0.style.display='';
-      [['mkShadow','shadow'],['mkReflect','reflect'],['mkTransl','translucency'],['mkEnv','env'],['mkMirror','mirror'],['mkSpill','spill'],['mkInk','ink']].forEach(([id,k])=>{const s=$(id);if(s){s.value=MK[k];const v=$(id+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      const ir0=$('mkInkRow'); if(ir0)ir0.style.display=''; const ar0=$('mkAcrRows'); if(ar0)ar0.style.display='';
+      [['mkShadow','shadow'],['mkReflect','reflect'],['mkTransl','translucency'],['mkEnv','env'],['mkMirror','mirror'],['mkSpill','spill'],['mkInk','ink'],['mkVivid','vivid'],['mkEdgeGlow','edgeGlow'],['mkEdgeWidth','edgeWidth'],['mkContact','contact'],['mkGlass','glass']].forEach(([id,k])=>{const s=$(id);if(s){s.value=MK[k];const v=$(id+'V');if(v)v.textContent=Math.round(MK[k]);}});
     }
     buildMasked();
     // se há uma placa de template ativa (perspetiva+quad), o design entra logo nela;
@@ -201,14 +206,23 @@
   window.mockSetMask=function(shape){ mkSnapshot(); MK.mask=shape; buildMasked(); $('mkRadiusRow').style.display=shapeHasCorners()?'':'none'; renderMock(); };
   window.mockSetRadius=function(v){ mkSnapshot(); MK.maskRadius=+v; $('mkRadiusV').textContent=Math.round(v); buildMasked(); renderMock(); };
   window.mockSetFinish=function(v){
-    mkSnapshot(true); MK.finish=v; buildFinished();
+    mkSnapshot(true); MK.finish=v;
     // realismo base ao escolher (se ainda a zero) — vidro claro, cor fiel
-    if(v==='acrylic'){ MK.shadow=22; MK.reflect=0; MK.spill=25; MK.translucency=0; MK.env=15; MK.mirror=25; if(MK.ink==null)MK.ink=65;
-      MK.blend='source-over'; if($('mkBlend'))$('mkBlend').value='source-over'; }  // Overlay lava o modelo transparente — a luz da sala entra via Ambiente/Espelho
+    if(v==='acrylic'){
+      MK.shadow=22; MK.reflect=0; MK.spill=25; MK.translucency=0; MK.env=15; MK.mirror=25; if(MK.ink==null)MK.ink=65;
+      if(MK.vivid==null)MK.vivid=40; if(MK.edgeGlow==null)MK.edgeGlow=50; if(MK.edgeWidth==null)MK.edgeWidth=50;
+      if(MK.contact==null)MK.contact=50; if(MK.glass==null)MK.glass=50;
+      MK.fillPanel=false; MK.glassFrost=false;  // vidro claro por defeito — usa os toggles se quiseres opaco/fosco
+      MK.blend='source-over'; if($('mkBlend'))$('mkBlend').value='source-over';  // Overlay lava o modelo transparente — a luz da sala entra via Ambiente/Espelho
+    }
     else if(v==='lightbox'){ if(MK.spill===0)MK.spill=45; if(MK.shadow===0)MK.shadow=15; if(MK.reflect===0)MK.reflect=15; MK.env=35; }
     else if(v==='none'){ MK.env=0; }
+    buildFinished();
     setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkReflect',MK.reflect); setUI('mkTransl',MK.translucency); setUI('mkEnv',MK.env); setUI('mkMirror',MK.mirror); setUI('mkInk',MK.ink!=null?MK.ink:65);
-    const ir=$('mkInkRow'); if(ir)ir.style.display=(v==='acrylic')?'':'none';
+    setUI('mkVivid',MK.vivid); setUI('mkEdgeGlow',MK.edgeGlow); setUI('mkEdgeWidth',MK.edgeWidth); setUI('mkContact',MK.contact); setUI('mkGlass',MK.glass);
+    if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
+    if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
+    const ir=$('mkInkRow'); if(ir)ir.style.display=(v==='acrylic')?'':'none'; const ar=$('mkAcrRows'); if(ar)ar.style.display=(v==='acrylic')?'':'none';
     renderMock();
   };
   window.mockSetTranslucency=function(v){ mkSnapshot(); MK.translucency=+v; $('mkTranslV').textContent=Math.round(v); renderMock(); };
@@ -226,6 +240,11 @@
   let _inkT=null;
   window.mockSetInk=function(v){ mkSnapshot(); MK.ink=c01(v); $('mkInkV').textContent=Math.round(MK.ink);
     clearTimeout(_inkT); _inkT=setTimeout(()=>{ buildFinished(); renderMock(); },80); };  // rebuild adiado → slider fluido
+  window.mockSetVivid=function(v){ mkSnapshot(); MK.vivid=c01(v); $('mkVividV').textContent=Math.round(MK.vivid); renderMock(); };
+  window.mockSetEdgeGlow=function(v){ mkSnapshot(); MK.edgeGlow=c01(v); $('mkEdgeGlowV').textContent=Math.round(MK.edgeGlow); renderMock(); };
+  window.mockSetEdgeWidth=function(v){ mkSnapshot(); MK.edgeWidth=c01(v); $('mkEdgeWidthV').textContent=Math.round(MK.edgeWidth); renderMock(); };
+  window.mockSetContact=function(v){ mkSnapshot(); MK.contact=c01(v); $('mkContactV').textContent=Math.round(MK.contact); renderMock(); };
+  window.mockSetGlass=function(v){ mkSnapshot(); MK.glass=c01(v); $('mkGlassV').textContent=Math.round(MK.glass); renderMock(); };
   window.mockToggleBeam=function(){ mkSnapshot(true); MK.beamOn=!MK.beamOn; const b=$('mkBeamBtn'); if(b){b.classList.toggle('on',MK.beamOn); b.textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela';} const r=$('mkBeamRows'); if(r)r.style.display=MK.beamOn?'':'none'; renderMock(); };
   window.mockSetBeam=function(v){ mkSnapshot(); MK.beam=c01(v); $('mkBeamV').textContent=Math.round(MK.beam); renderMock(); };
   window.mockSetBeamAngle=function(v){ mkSnapshot(); MK.beamAngle=+v; $('mkBeamAngV').textContent=Math.round(v); renderMock(); };
@@ -284,7 +303,9 @@
     setUI('mkOpacity',Math.round(MK.opacity*100)); setUI('mkScale',Math.round(MK.scaleMul*100)); setUI('mkRot',Math.round(MK.rot*180/Math.PI));
     setUI('mkRadius',MK.maskRadius); setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkShSize',MK.shadowSize); setUI('mkShAng',MK.shadowAngle); setUI('mkReflect',MK.reflect); setUI('mkRefAng',MK.reflectAngle); setUI('mkTransl',MK.translucency); setUI('mkThick',MK.thickness);
     setUI('mkEnv',MK.env); setUI('mkMirror',MK.mirror); setUI('mkInk',MK.ink!=null?MK.ink:65);
-    if($('mkInkRow'))$('mkInkRow').style.display=(MK.finish==='acrylic')?'':'none';
+    setUI('mkVivid',MK.vivid!=null?MK.vivid:40); setUI('mkEdgeGlow',MK.edgeGlow!=null?MK.edgeGlow:50); setUI('mkEdgeWidth',MK.edgeWidth!=null?MK.edgeWidth:50);
+    setUI('mkContact',MK.contact!=null?MK.contact:50); setUI('mkGlass',MK.glass!=null?MK.glass:50);
+    if($('mkInkRow'))$('mkInkRow').style.display=(MK.finish==='acrylic')?'':'none'; if($('mkAcrRows'))$('mkAcrRows').style.display=(MK.finish==='acrylic')?'':'none';
     if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
     if($('mkBlend'))$('mkBlend').value=MK.blend; if($('mkMask'))$('mkMask').value=MK.mask; if($('mkFinish'))$('mkFinish').value=MK.finish;
     if($('mkOrient'))$('mkOrient').value=MK.orient; if($('mkSize'))$('mkSize').value=MK.size;
@@ -294,7 +315,7 @@
   }
   // ── UNDO (Ctrl/Cmd+Z, só na aba Mockups) ──────────────────────────────────────
   let _undo=[], _lastSnap=0;
-  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,glassFrost:MK.glassFrost,translucency:MK.translucency,thickness:MK.thickness,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect,reflectAngle:MK.reflectAngle}); }
+  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,glassFrost:MK.glassFrost,translucency:MK.translucency,thickness:MK.thickness,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect,reflectAngle:MK.reflectAngle,env:MK.env,mirror:MK.mirror,ink:MK.ink,vivid:MK.vivid,edgeGlow:MK.edgeGlow,edgeWidth:MK.edgeWidth,contact:MK.contact,glass:MK.glass}); }
   function mkSnapshot(force){ if(!MK.design)return; const now=Date.now(); if(!force && now-_lastSnap<600) return; _lastSnap=now; _undo.push(mkSerial()); if(_undo.length>60)_undo.shift(); }
   window.mockUndo=function(){ if(!_undo.length) return; const s=JSON.parse(_undo.pop()); Object.assign(MK,s); if(MK.quad)MK.quad=MK.quad.map(p=>({x:p.x,y:p.y})); buildMasked(); syncAllUI(); MK.selected=true; renderMock(); };
 
@@ -498,21 +519,23 @@
     }
     // 1.2) VIDRO — dentro da placa, a parede é vista ATRAVÉS do acrílico: micro-desvio de
     //      refração + tinta neutra ligeiríssima. É o "tell" de haver um objeto de vidro ali.
-    if(full && MK.scene && MK.finish==='acrylic'){
+    if(full && MK.scene && MK.finish==='acrylic' && MK.glass>0){
+      const gAmt=MK.glass/50;                        // 50=baseline(1x) · 0=off · 100=2x
       const clipV=hasPanel?renderShapeLayer(w,h,ratio):layer;
-      const shift=Math.max(1,0.0018*mn);
+      const shift=Math.max(0.4,0.0018*mn*gAmt);
       const gl=document.createElement('canvas');gl.width=w;gl.height=h;const gx2=gl.getContext('2d');
       gx2.filter='blur(0.5px)'; gx2.drawImage(MK.scene,0,shift,w,h); gx2.filter='none';
-      gx2.globalCompositeOperation='multiply'; gx2.fillStyle='rgba(232,238,236,1)'; gx2.fillRect(0,0,w,h); // vidro absorve ~4%, tom neutro-frio
+      gx2.globalCompositeOperation='multiply'; gx2.globalAlpha=Math.min(1,MK.glass/100);
+      gx2.fillStyle='rgba(232,238,236,1)'; gx2.fillRect(0,0,w,h); gx2.globalAlpha=1; // vidro absorve luz, tom neutro-frio
       gx2.globalCompositeOperation='destination-in'; gx2.drawImage(clipV,0,0); gx2.globalCompositeOperation='source-over';
       ctx2.drawImage(gl,0,0);
     }
     // 1.5) AO / bisel — sombra de contacto fina ao longo do REBORDO REAL da peça (já posicionada no frame)
-    if(full && hasPanel){
+    if(full && hasPanel && MK.contact>0){
       const band=Math.max(2,maskExtent(shadowSilh,w,h)*0.03);
       const ring=edgeRing(shadowSilh,w,h,band);
       ring.getContext('2d').globalCompositeOperation='source-in'; ring.getContext('2d').fillStyle='rgba(0,0,0,1)'; ring.getContext('2d').fillRect(0,0,w,h);
-      ctx2.globalCompositeOperation='multiply'; ctx2.globalAlpha=0.32; ctx2.drawImage(ring,0,0);
+      ctx2.globalCompositeOperation='multiply'; ctx2.globalAlpha=(MK.contact/100)*0.64; ctx2.drawImage(ring,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 2) PROJEÇÃO DE COR na parede — a tinta do acrílico projeta a sua cor no ambiente
@@ -551,8 +574,8 @@
     // 3) a PEÇA — translucidez deixa ver a parede através da cor (mantendo a cor fiel)
     const transl=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
     ctx2.globalAlpha=MK.opacity*(1-transl); ctx2.globalCompositeOperation=MK.blend;
-    // tinta UV sobre vidro é ligeiramente mais viva que print em papel (reforço subtil)
-    if(MK.finish==='acrylic') ctx2.filter='saturate(1.12) contrast(1.03)';
+    // Vivacidade: tinta UV sobre vidro pode ficar mais viva que print em papel (reforço opcional)
+    if(MK.finish==='acrylic' && MK.vivid>0) ctx2.filter='saturate('+(1+MK.vivid/100*0.30)+') contrast('+(1+MK.vivid/100*0.075)+')';
     ctx2.drawImage(layer,0,0); ctx2.filter='none';
     ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     // 3.1) HARMONIZAÇÃO — puxa ligeiramente o matiz da peça para a cor dominante da cena
@@ -619,17 +642,21 @@
       gx2.globalCompositeOperation='destination-in'; gx2.drawImage(clipG,0,0); gx2.globalCompositeOperation='source-over';
       ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=1; ctx2.drawImage(G,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
-      // FRESNEL honesto — na peça real a aresta é só uma linha fina a apanhar luz,
-      // não uma moldura brilhante. Linha nítida + halo mínimo.
-      const band=Math.max(2,maskExtent(clipG,w,h)*0.02);
-      const halo=edgeRing(clipG,w,h,band);
-      const line=edgeRing(clipG,w,h,Math.max(1,band*0.3));
-      const whiten=(ring,alpha)=>{ const rc=ring.getContext('2d'); rc.globalCompositeOperation='source-in'; rc.globalAlpha=alpha; rc.fillStyle='#fff'; rc.fillRect(0,0,w,h); rc.globalAlpha=1; rc.globalCompositeOperation='source-over'; };
-      whiten(halo,1); whiten(line,1);
-      ctx2.globalCompositeOperation='screen';
-      ctx2.globalAlpha=0.18; ctx2.drawImage(halo,0,0);
-      ctx2.globalAlpha=0.5; ctx2.drawImage(line,0,0);
-      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+      // ARESTA (fresnel) — na peça real é só uma linha fina a apanhar luz, não uma moldura
+      // brilhante. Intensidade (MK.edgeGlow) e largura (MK.edgeWidth) totalmente ajustáveis.
+      if(MK.edgeGlow>0){
+        const wMul=Math.max(0.1,MK.edgeWidth/50);          // 50=baseline
+        const band=Math.max(2,maskExtent(clipG,w,h)*0.02*wMul);
+        const halo=edgeRing(clipG,w,h,band);
+        const line=edgeRing(clipG,w,h,Math.max(1,band*0.3));
+        const whiten=(ring,alpha)=>{ const rc=ring.getContext('2d'); rc.globalCompositeOperation='source-in'; rc.globalAlpha=alpha; rc.fillStyle='#fff'; rc.fillRect(0,0,w,h); rc.globalAlpha=1; rc.globalCompositeOperation='source-over'; };
+        whiten(halo,1); whiten(line,1);
+        const gMul=MK.edgeGlow/50;                         // 50=baseline
+        ctx2.globalCompositeOperation='screen';
+        ctx2.globalAlpha=Math.min(1,0.18*gMul); ctx2.drawImage(halo,0,0);
+        ctx2.globalAlpha=Math.min(1,0.5*gMul); ctx2.drawImage(line,0,0);
+        ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+      }
     }
     // 3.7) ESPELHO — reflexo verdadeiro da sala (nítido↔desfocado conforme o slider), tingido de vidro.
     //      Diferente do Ambiente (que só isola realces fortes): aqui reflete-se a cena inteira,
@@ -1139,6 +1166,7 @@
       finish:MK.finish, fillPanel:MK.fillPanel, glassFrost:MK.glassFrost, translucency:MK.translucency, thickness:MK.thickness, orient:MK.orient, size:MK.size, customW:MK.customW, customH:MK.customH,
       spill:MK.spill, shadow:MK.shadow, shadowSize:MK.shadowSize, shadowAngle:MK.shadowAngle, reflect:MK.reflect, reflectAngle:MK.reflectAngle,
       beamOn:MK.beamOn, beam:MK.beam, beamAngle:MK.beamAngle, beamPos:MK.beamPos, beamWidth:MK.beamWidth, beamSoft:MK.beamSoft, env:MK.env, mirror:MK.mirror, ink:MK.ink,
+      vivid:MK.vivid, edgeGlow:MK.edgeGlow, edgeWidth:MK.edgeWidth, contact:MK.contact, glass:MK.glass,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
   };
@@ -1160,17 +1188,18 @@
       MK.glassFrost=!!t.glassFrost; MK.translucency=(t.translucency!=null?t.translucency:20); MK.reflectAngle=(t.reflectAngle!=null?t.reflectAngle:135); MK.thickness=(t.thickness!=null?t.thickness:30);
       const c01t=v=>Math.max(0,Math.min(100,+v||0));
       MK.beamOn=!!t.beamOn; MK.beam=c01t(t.beam!=null?t.beam:55); MK.beamAngle=(t.beamAngle!=null?t.beamAngle:60); MK.beamPos=c01t(t.beamPos!=null?t.beamPos:50); MK.beamWidth=c01t(t.beamWidth!=null?t.beamWidth:40); MK.beamSoft=c01t(t.beamSoft!=null?t.beamSoft:55); MK.env=c01t(t.env!=null?t.env:60); MK.mirror=c01t(t.mirror!=null?t.mirror:25); MK.ink=c01t(t.ink!=null?t.ink:65);
+      MK.vivid=c01t(t.vivid!=null?t.vivid:40); MK.edgeGlow=c01t(t.edgeGlow!=null?t.edgeGlow:50); MK.edgeWidth=c01t(t.edgeWidth!=null?t.edgeWidth:50); MK.contact=c01t(t.contact!=null?t.contact:50); MK.glass=c01t(t.glass!=null?t.glass:50);
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
       $('mkMask').value=MK.mask; $('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
       $('mkRadius').value=MK.maskRadius; $('mkRadiusV').textContent=Math.round(MK.maskRadius);
       if($('mkFinish'))$('mkFinish').value=MK.finish; if($('mkOrient'))$('mkOrient').value=MK.orient;
-      if($('mkInkRow'))$('mkInkRow').style.display=(MK.finish==='acrylic')?'':'none';
+      if($('mkInkRow'))$('mkInkRow').style.display=(MK.finish==='acrylic')?'':'none'; if($('mkAcrRows'))$('mkAcrRows').style.display=(MK.finish==='acrylic')?'':'none';
       if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
-      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness'],['mkBeam','beam'],['mkBeamAng','beamAngle'],['mkBeamPos','beamPos'],['mkBeamW','beamWidth'],['mkBeamS','beamSoft'],['mkEnv','env'],['mkMirror','mirror'],['mkInk','ink']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness'],['mkBeam','beam'],['mkBeamAng','beamAngle'],['mkBeamPos','beamPos'],['mkBeamW','beamWidth'],['mkBeamS','beamSoft'],['mkEnv','env'],['mkMirror','mirror'],['mkInk','ink'],['mkVivid','vivid'],['mkEdgeGlow','edgeGlow'],['mkEdgeWidth','edgeWidth'],['mkContact','contact'],['mkGlass','glass']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
       if($('mkBeamBtn')){ $('mkBeamBtn').classList.toggle('on',MK.beamOn); $('mkBeamBtn').textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela'; } if($('mkBeamRows'))$('mkBeamRows').style.display=MK.beamOn?'':'none';
       if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
       syncProps(); fitView(); renderMock(); mockCloseLib();

@@ -3663,7 +3663,18 @@ window.addEventListener('keydown',e=>{
     <div class="mk-row"><span>Reflexo (ângulo)</span><input type="range" id="mkRefAng" min="0" max="360" value="135" oninput="mockSetReflectAngle(this.value)"><span class="mk-v" id="mkRefAngV">135</span></div>
     <div class="mk-row"><span>Ambiente (luz+sombra+reflexo da sala)</span><input type="range" id="mkEnv" min="0" max="100" value="60" oninput="mockSetEnv(this.value)"><span class="mk-v" id="mkEnvV">60</span></div>
     <div class="mk-row"><span>Espelho (reflete a sala)</span><input type="range" id="mkMirror" min="0" max="100" value="25" oninput="mockSetMirror(this.value)"><span class="mk-v" id="mkMirrorV">25</span></div>
-    <div class="mk-row" id="mkInkRow" style="display:none"><span>Tinta (densidade)</span><input type="range" id="mkInk" min="0" max="100" value="65" oninput="mockSetInk(this.value)"><span class="mk-v" id="mkInkV">65</span></div>
+    <div class="mk-row" id="mkInkRow" style="display:none;flex-basis:100%;margin-top:6px">
+      <span style="color:#6f8a98;font-size:10px;letter-spacing:.1em;text-transform:uppercase">Acrílico — afinação fina (calibra contra fotos reais)</span>
+    </div>
+    <div class="mk-row" id="mkAcrRows" style="display:none">
+      <div class="mk-row"><button class="mk-b" id="mkFillBtn" onclick="mockToggleFill()" title="Preenche a placa toda com a cor dominante da arte, em vez de vidro claro">Preencher placa</button><button class="mk-b" id="mkFrostBtn" onclick="mockToggleFrost()" title="Corpo da placa fosco/opaco em vez de vidro claro">Vidro fosco</button></div>
+      <div class="mk-row"><span>Tinta (densidade)</span><input type="range" id="mkInk" min="0" max="100" value="65" oninput="mockSetInk(this.value)"><span class="mk-v" id="mkInkV">65</span></div>
+      <div class="mk-row"><span>Vivacidade da tinta</span><input type="range" id="mkVivid" min="0" max="100" value="40" oninput="mockSetVivid(this.value)"><span class="mk-v" id="mkVividV">40</span></div>
+      <div class="mk-row"><span>Vidro (ver através/refração)</span><input type="range" id="mkGlass" min="0" max="100" value="50" oninput="mockSetGlass(this.value)"><span class="mk-v" id="mkGlassV">50</span></div>
+      <div class="mk-row"><span>Aresta — brilho</span><input type="range" id="mkEdgeGlow" min="0" max="100" value="50" oninput="mockSetEdgeGlow(this.value)"><span class="mk-v" id="mkEdgeGlowV">50</span></div>
+      <div class="mk-row"><span>Aresta — largura</span><input type="range" id="mkEdgeWidth" min="0" max="100" value="50" oninput="mockSetEdgeWidth(this.value)"><span class="mk-v" id="mkEdgeWidthV">50</span></div>
+      <div class="mk-row"><span>Sombra de contacto</span><input type="range" id="mkContact" min="0" max="100" value="50" oninput="mockSetContact(this.value)"><span class="mk-v" id="mkContactV">50</span></div>
+    </div>
     <div class="mk-row"><button class="mk-b" id="mkBeamBtn" onclick="mockToggleBeam()" title="Faixa de sol que atravessa a placa, igual à que cai na parede">Luz de janela</button><button class="mk-b" onclick="mockAutoBeam()" title="Deteta a direção da luz na cena e alinha a faixa automaticamente">Auto (da cena)</button></div>
     <div id="mkBeamRows" style="display:none">
       <div class="mk-row"><span>Luz · intensidade</span><input type="range" id="mkBeam" min="0" max="100" value="55" oninput="mockSetBeam(this.value)"><span class="mk-v" id="mkBeamV">55</span></div>
@@ -3672,7 +3683,7 @@ window.addEventListener('keydown',e=>{
       <div class="mk-row"><span>Luz · largura</span><input type="range" id="mkBeamW" min="4" max="100" value="40" oninput="mockSetBeamWidth(this.value)"><span class="mk-v" id="mkBeamWV">40</span></div>
       <div class="mk-row"><span>Luz · suavidade</span><input type="range" id="mkBeamS" min="0" max="100" value="55" oninput="mockSetBeamSoft(this.value)"><span class="mk-v" id="mkBeamSV">55</span></div>
     </div>
-    <div class="mk-hint"><b>Tinta</b> = densidade da impressão UV: zonas claras deixam ver a parede através (como o acrílico real) · <b>Derrame</b> = a cor da tinta projetada na parede à volta · <b>Ambiente</b> = realces e sombra da sala na placa · <b>Espelho</b> = reflexo dos elementos da divisão · <b>Luz de janela</b> = faixa de sol sobre a placa (usa <b>Auto (da cena)</b>).</div>
+    <div class="mk-hint"><b>Preencher placa/Vidro fosco</b> = corpo opaco/fosco em vez de vidro claro (se ligado, nada mais abaixo se vê através) · <b>Tinta</b> = densidade: zonas claras deixam ver a parede através · <b>Vivacidade</b> = saturação/contraste extra da tinta · <b>Vidro</b> = quanto se vê/deforma a parede através do acrílico · <b>Aresta</b> = brilho/largura da linha de corte · <b>Sombra de contacto</b> = escurecimento junto ao rebordo · <b>Derrame</b> = cor projetada na parede à volta · <b>Ambiente</b>/<b>Espelho</b> = luz e reflexo da sala na placa · <b>Luz de janela</b> = faixa de sol sobre a placa (<b>Auto (da cena)</b> alinha).</div>
   </div>
 </div>
 <div id="mkLib" hidden>
