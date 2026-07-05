@@ -174,7 +174,7 @@
     // Zonas quase-brancas/claras (pouca tinta) ficam translúcidas; escuras/saturadas ficam densas.
     // (nas fotos da peça física vê-se o vaso ATRAVÉS do gradiente verde — é isto que replica)
     if(MK.finish==='acrylic' && !MK.fillPanel){
-      const K=(1-((MK.ink!=null?MK.ink:65)/100))*0.85;   // slider Tinta: 100=opaco, 0=muito transparente
+      const K=1-((MK.ink!=null?MK.ink:65)/100);   // slider Tinta: 100=opaco, 0=sem tinta = vidro limpo
       if(K>0.01){
         const im=x.getImageData(0,0,w,h), d=im.data;
         for(let i=0;i<d.length;i+=4){
@@ -182,7 +182,7 @@
           const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
           const mx=Math.max(r,g,b), mnn=Math.min(r,g,b);
           const lum=0.299*r+0.587*g+0.114*b, sat=mx===0?0:(mx-mnn)/mx;
-          const t=lum*(1-sat);                 // 1 = quase branco (pouca tinta) → transparente
+          const t=lum*(1-sat*0.6);             // 1 = pouca tinta (claro, mesmo c/ leve cor) → transparente
           d[i+3]=a*(1-K*t);
         }
         x.putImageData(im,0,0);
@@ -203,7 +203,8 @@
   window.mockSetFinish=function(v){
     mkSnapshot(true); MK.finish=v; buildFinished();
     // realismo base ao escolher (se ainda a zero) — vidro claro, cor fiel
-    if(v==='acrylic'){ MK.shadow=22; MK.reflect=0; MK.spill=25; MK.translucency=0; MK.env=15; MK.mirror=25; if(MK.ink==null)MK.ink=65; }
+    if(v==='acrylic'){ MK.shadow=22; MK.reflect=0; MK.spill=25; MK.translucency=0; MK.env=15; MK.mirror=25; if(MK.ink==null)MK.ink=65;
+      MK.blend='source-over'; if($('mkBlend'))$('mkBlend').value='source-over'; }  // Overlay lava o modelo transparente — a luz da sala entra via Ambiente/Espelho
     else if(v==='lightbox'){ if(MK.spill===0)MK.spill=45; if(MK.shadow===0)MK.shadow=15; if(MK.reflect===0)MK.reflect=15; MK.env=35; }
     else if(v==='none'){ MK.env=0; }
     setUI('mkSpill',MK.spill); setUI('mkShadow',MK.shadow); setUI('mkReflect',MK.reflect); setUI('mkTransl',MK.translucency); setUI('mkEnv',MK.env); setUI('mkMirror',MK.mirror); setUI('mkInk',MK.ink!=null?MK.ink:65);
@@ -222,7 +223,9 @@
   window.mockSetReflect=function(v){ mkSnapshot(); MK.reflect=c01(v); $('mkReflectV').textContent=Math.round(MK.reflect); renderMock(); };
   window.mockSetEnv=function(v){ mkSnapshot(); MK.env=c01(v); $('mkEnvV').textContent=Math.round(MK.env); renderMock(); };
   window.mockSetMirror=function(v){ mkSnapshot(); MK.mirror=c01(v); $('mkMirrorV').textContent=Math.round(MK.mirror); renderMock(); };
-  window.mockSetInk=function(v){ mkSnapshot(); MK.ink=c01(v); $('mkInkV').textContent=Math.round(MK.ink); buildFinished(); renderMock(); };
+  let _inkT=null;
+  window.mockSetInk=function(v){ mkSnapshot(); MK.ink=c01(v); $('mkInkV').textContent=Math.round(MK.ink);
+    clearTimeout(_inkT); _inkT=setTimeout(()=>{ buildFinished(); renderMock(); },80); };  // rebuild adiado → slider fluido
   window.mockToggleBeam=function(){ mkSnapshot(true); MK.beamOn=!MK.beamOn; const b=$('mkBeamBtn'); if(b){b.classList.toggle('on',MK.beamOn); b.textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela';} const r=$('mkBeamRows'); if(r)r.style.display=MK.beamOn?'':'none'; renderMock(); };
   window.mockSetBeam=function(v){ mkSnapshot(); MK.beam=c01(v); $('mkBeamV').textContent=Math.round(MK.beam); renderMock(); };
   window.mockSetBeamAngle=function(v){ mkSnapshot(); MK.beamAngle=+v; $('mkBeamAngV').textContent=Math.round(v); renderMock(); };
@@ -301,7 +304,22 @@
     mkSnapshot(true);
     MK.persp=!MK.persp;
     if(MK.persp) MK.quad=designCorners();   // arranca dos cantos afins atuais
-    else MK.quad=null;
+    else {
+      // desligar: converte o quad ATUAL de volta a afim equivalente (centro/rotação/escala),
+      // senão a peça salta para o x/y/escala antigos (que podem nem corresponder — ex. após template)
+      if(MK.quad){
+        const q=MK.quad, c=centroid(q);
+        const topW=Math.hypot(q[1].x-q[0].x,q[1].y-q[0].y), botW=Math.hypot(q[2].x-q[3].x,q[2].y-q[3].y);
+        const lH=Math.hypot(q[3].x-q[0].x,q[3].y-q[0].y), rH=Math.hypot(q[2].x-q[1].x,q[2].y-q[1].y);
+        MK.x=c.x; MK.y=c.y;
+        MK.rot=Math.atan2(q[1].y-q[0].y, q[1].x-q[0].x);
+        const eff=Math.max(0.0001, Math.min(((topW+botW)/2)/MK.design.w, ((lH+rH)/2)/MK.design.h));
+        if(!(MK.scaleMul>0)) MK.scaleMul=1;
+        MK.baseScale=eff/MK.scaleMul;
+      }
+      MK.quad=null;
+      syncProps();
+    }
     $('mkPerspBtn').classList.toggle('on',MK.persp);
     $('mkPerspBtn').textContent=MK.persp?'Perspetiva: ON':'Perspetiva';
     renderMock();
@@ -459,7 +477,7 @@
     if(!MK.design) return;
     const w=ctx2.canvas.width, h=ctx2.canvas.height;
     const layer=renderDesignLayer(w,h,ratio);
-    const full=!MK.dragging; // durante o arrasto, salta efeitos pesados (fluidez)
+    const full=!MK.dragging && !MK._quick; // arrasto/slider em movimento → salta efeitos pesados (fluidez)
     const mn=Math.min(w,h);
     // silhueta para a sombra: se há acabamento (placa física), usa o RETÂNGULO da placa; senão a arte
     const hasPanel=(MK.finish&&MK.finish!=='none'&&MK.shapeMask);
@@ -677,12 +695,21 @@
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
   }
-  window.renderMock=function(){
+  function _drawMock(quick){
     const cv=$('mockCv'); if(!cv) return; const ctx2=cv.getContext('2d');
+    MK._quick=!!quick;
     ctx2.clearRect(0,0,MK.cw,MK.ch);
     if(MK.scene) ctx2.drawImage(MK.scene,0,0,MK.cw,MK.ch);
     if(MK.design) compositeDesignOnto(ctx2,1);
+    MK._quick=false;
     drawHandles();
+  }
+  // duas passagens: resposta IMEDIATA sem efeitos pesados (fluidez nos sliders),
+  // passagem completa ~140ms depois de parares de mexer
+  let _rmTimer=null;
+  window.renderMock=function(){
+    _drawMock(true);
+    clearTimeout(_rmTimer); _rmTimer=setTimeout(()=>_drawMock(false),140);
   };
   function drawHandles(){
     const ov=$('mockOv'); if(!ov) return; const o=ov.getContext('2d');
