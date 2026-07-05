@@ -3639,6 +3639,11 @@ window.addEventListener('keydown',e=>{
       </select>
     </div>
     <div class="mk-row" id="mkRadiusRow" style="display:none"><span>Cantos</span><input type="range" id="mkRadius" min="0" max="50" value="0" oninput="mockSetRadius(this.value)"><span class="mk-v" id="mkRadiusV">0</span></div>
+    <div class="mk-row" style="flex-basis:100%;margin-top:4px"><span style="color:#6f8a98;font-size:10px;letter-spacing:.1em;text-transform:uppercase">Aresta (corte da forma) — funciona com qualquer acabamento</span></div>
+    <div class="mk-row"><span>Aresta — suavidade</span><input type="range" id="mkEdgeSoft" min="0" max="100" value="22" oninput="mockSetEdgeSoft(this.value)"><span class="mk-v" id="mkEdgeSoftV">22</span></div>
+    <div class="mk-row"><span>Contorno — intensidade</span><input type="range" id="mkEdgeBorder" min="0" max="100" value="0" oninput="mockSetEdgeBorder(this.value)"><span class="mk-v" id="mkEdgeBorderV">0</span></div>
+    <div class="mk-row"><span>Contorno — largura</span><input type="range" id="mkEdgeBorderW" min="0" max="100" value="35" oninput="mockSetEdgeBorderW(this.value)"><span class="mk-v" id="mkEdgeBorderWV">35</span></div>
+    <div class="mk-row"><span>Contorno — cor</span><input type="color" id="mkEdgeBorderColor" value="#141821" oninput="mockSetEdgeBorderColor(this.value)" style="width:34px;height:32px;border:1px solid #1d2832;border-radius:8px;background:none;padding:2px;cursor:pointer"></div>
     <div class="mk-row"><span>Acabamento</span>
       <select id="mkFinish" onchange="mockSetFinish(this.value)">
         <option value="none">Nenhum</option><option value="acrylic">Acrílico translúcido</option><option value="lightbox">Lightbox (retroiluminado)</option>
