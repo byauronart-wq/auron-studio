@@ -529,7 +529,7 @@
     if(!MK.design) return;
     const w=ctx2.canvas.width, h=ctx2.canvas.height;
     const layer=renderDesignLayer(w,h,ratio);
-    const full=!MK.dragging && !MK._quick; // arrasto/slider em movimento → salta efeitos pesados (fluidez)
+    const full=!MK.dragging; // só o arrasto da PEÇA (mover/rodar/escalar) salta efeitos pesados — sliders sempre em qualidade completa
     const mn=Math.min(w,h);
     // silhueta para a sombra: usa sempre a FORMA cortada (nítida), mesmo sem acabamento —
     // uma sombra que segue o alpha difuso da arte fica com um ar impreciso/desfocado.
@@ -761,21 +761,21 @@
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
   }
-  function _drawMock(quick){
+  function _drawMock(){
     const cv=$('mockCv'); if(!cv) return; const ctx2=cv.getContext('2d');
-    MK._quick=!!quick;
     ctx2.clearRect(0,0,MK.cw,MK.ch);
     if(MK.scene) ctx2.drawImage(MK.scene,0,0,MK.cw,MK.ch);
     if(MK.design) compositeDesignOnto(ctx2,1);
-    MK._quick=false;
     drawHandles();
   }
-  // duas passagens: resposta IMEDIATA sem efeitos pesados (fluidez nos sliders),
-  // passagem completa ~140ms depois de parares de mexer
-  let _rmTimer=null;
+  // agrupa múltiplas chamadas no MESMO frame (vários sliders/eventos) numa só passagem —
+  // mas SEMPRE com os efeitos completos (só o arrasto da peça em si, MK.dragging, é que
+  // salta os efeitos pesados, para o mover/rodar/escalar ser fluido). Sliders deixam de
+  // mostrar um frame "vazio" enquanto arrastas — vês sempre o resultado real.
+  let _rmRAF=null;
   window.renderMock=function(){
-    _drawMock(true);
-    clearTimeout(_rmTimer); _rmTimer=setTimeout(()=>_drawMock(false),140);
+    if(_rmRAF) return;
+    _rmRAF=requestAnimationFrame(()=>{ _rmRAF=null; _drawMock(); });
   };
   function drawHandles(){
     const ov=$('mockOv'); if(!ov) return; const o=ov.getContext('2d');
