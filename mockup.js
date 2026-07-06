@@ -583,7 +583,11 @@
       ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=Math.min(0.9,MK.spill/100*0.9); ctx2.drawImage(g,0,0);
       ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
-    // 2.5) ESPESSURA do acrílico (~5mm) — a aba lateral da placa, atrás da face frontal
+    // 2.5) ESPESSURA do acrílico (~5mm) — a aba lateral da placa, atrás da face frontal.
+    // Na peça real (ver foto de detalhe), a aresta NÃO é branca/tingida de neutro — é a MESMA
+    // cor do material, só mais densa/escura, porque estás a ver mais espessura de tinta
+    // translúcida de lado (como vidro colorido visto ao través). Por isso aprofundamos a cor
+    // PRÓPRIA da aresta (saturação↑, luz↓) em vez de a pintar com um tom neutro/navy.
     if(hasPanel && MK.thickness>0){
       const t=Math.max(3,(MK.thickness/100)*0.045*mn);           // espessura em px (mais presente)
       const ang=(MK.shadowAngle||135)*Math.PI/180;                // mesma direção da luz
@@ -592,16 +596,19 @@
       const ed=document.createElement('canvas');ed.width=w;ed.height=h;const ex=ed.getContext('2d');
       // empilha cópias deslocadas da face → constrói o lado
       for(let k=1;k<=steps;k++){ const f=k/steps; ex.globalAlpha=1; ex.drawImage(layer, tdx*t*f, tdy*t*f); }
-      // escurece o lado (vidro de canto) e remove a área da face frontal (fica só a aba)
-      ex.globalCompositeOperation='source-atop'; ex.fillStyle='rgba(8,10,16,.5)'; ex.fillRect(0,0,w,h);
-      ex.globalCompositeOperation='destination-out'; ex.drawImage(layer,0,0);
-      ex.globalCompositeOperation='source-over';
-      ctx2.globalAlpha=0.92; ctx2.drawImage(ed,0,0); ctx2.globalAlpha=1;
-      // lip frontal claro (a aresta da frente a apanhar luz) no lado oposto
+      // aprofunda a cor própria (Beer-Lambert simplificado: mais material = mais denso/escuro)
+      // e remove a área da face frontal (fica só a aba lateral)
+      const deep=document.createElement('canvas');deep.width=w;deep.height=h;const dpx=deep.getContext('2d');
+      dpx.filter='saturate(1.55) brightness(0.5) contrast(1.08)'; dpx.drawImage(ed,0,0); dpx.filter='none';
+      dpx.globalCompositeOperation='destination-out'; dpx.drawImage(layer,0,0); dpx.globalCompositeOperation='source-over';
+      ctx2.globalAlpha=0.94; ctx2.drawImage(deep,0,0); ctx2.globalAlpha=1;
+      // lip frontal — realce SUBTIL e tingido (a mesma cor, mais clara), não um brilho branco
       const lip=document.createElement('canvas');lip.width=w;lip.height=h;const lx=lip.getContext('2d');
       lx.drawImage(layer,0,0); lx.globalCompositeOperation='destination-out'; lx.drawImage(layer,-tdx*Math.max(1.5,t*0.12),-tdy*Math.max(1.5,t*0.12));
-      lx.globalCompositeOperation='source-atop'; lx.fillStyle='rgba(255,255,255,.5)'; lx.fillRect(0,0,w,h);
-      ctx2.globalCompositeOperation='lighter'; ctx2.globalAlpha=0.6; ctx2.drawImage(lip,0,0); ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+      lx.globalCompositeOperation='source-over';
+      const tint=document.createElement('canvas');tint.width=w;tint.height=h;const tpx=tint.getContext('2d');
+      tpx.filter='brightness(1.7) saturate(0.9)'; tpx.drawImage(lip,0,0); tpx.filter='none';
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=0.4; ctx2.drawImage(tint,0,0); ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 3) a PEÇA — translucidez deixa ver a parede através da cor (mantendo a cor fiel)
     const transl=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
