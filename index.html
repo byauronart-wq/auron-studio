@@ -3589,12 +3589,12 @@ window.addEventListener('keydown',e=>{
   .mk-b.pri{background:#123040;border-color:#1d4456;color:#bfe6f4}
   .mk-b.on{background:#3a2a12;border-color:#7a5520;color:#ffce8a}
   .mk-sp{flex:1}
-  #mkStage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background:#05070a}
+  #mkStage{flex:1 1 auto;min-height:280px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background:#05070a}
   #mkWrap{position:relative;box-shadow:0 8px 40px rgba(0,0,0,.5)}
   #mockCv{display:block;background:#0a0e12}
   #mockOv{position:absolute;inset:0;touch-action:none;cursor:grab}
   #mkEmpty{position:absolute;color:#3f5360;font-size:13px;letter-spacing:.04em}
-  #mkProps{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:12px 16px;border-top:1px solid #131b22;background:#0a0e13}
+  #mkProps{display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;gap:14px;padding:12px 16px;border-top:1px solid #131b22;background:#0a0e13;flex:0 0 auto;max-height:32vh;overflow-y:auto}
   .mk-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#8aa3b1}
   .mk-row input[type=range]{width:120px}
   .mk-row select{background:#10161d;color:#cfe3ec;border:1px solid #1d2832;border-radius:6px;padding:6px}
