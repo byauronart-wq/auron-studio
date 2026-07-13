@@ -622,8 +622,12 @@ const SHAPES={
   arch:    t=>{const a=(t%(Math.PI*2)+Math.PI*2)%(Math.PI*2);const w=.65,bot=.85,cy=-.2;if(a<=Math.PI){return{x:Math.cos(a)*w,y:cy-Math.sin(a)*.65};}const f=(a-Math.PI)/Math.PI;if(f<1/3)return{x:w,y:lerp(cy,bot,f*3)};if(f<2/3)return{x:lerp(w,-w,(f-1/3)*3),y:bot};return{x:-w,y:lerp(bot,cy,(f-2/3)*3)};},
 };
 const SH_NAMES={circle:'Círculo',ellipse:'Elipse',squircle:'Squircle',heart:'Coração',drop:'Gota',diamond:'Losango',blob1:'Orgân.1',blob2:'Orgân.2',rect:'Rect',rectr:'Rect R.',tri:'Triâng.',trir:'Tri R.',arch:'Arco'};
-function getShapePts(fs){
-  const gen=SHAPES[fs]||SHAPES.circle,N=240,pts=[];
+function getShapePts(fs,radius){
+  // nº de pontos escala com o raio real desenhado: a 240 pts fixos, o polígono
+  // fica visivelmente facetado (arestas rectas) em exports 300dpi de peças grandes,
+  // onde o raio em px é muito maior do que no preview do ecrã.
+  const N=radius?Math.min(2000,Math.max(240,Math.ceil(2*Math.PI*radius/1.5))):240;
+  const gen=SHAPES[fs]||SHAPES.circle,pts=[];
   for(let i=0;i<=N;i++){const t=i/N*Math.PI*2;pts.push(gen(t));}
   let mx=0,my=0;pts.forEach(p=>{mx=Math.max(mx,Math.abs(p.x));my=Math.max(my,Math.abs(p.y));});
   return{pts,sN:1/Math.max(mx,my,.001)};
@@ -850,7 +854,7 @@ function drawBlob(oc,L,cw,ch){
   const tS=Math.ceil(baseR*3.6);if(tS<2)return;
   const tmp=document.createElement('canvas');tmp.width=tS;tmp.height=tS;
   const tc=tmp.getContext('2d');const hc=tS/2;
-  const{pts,sN}=getShapePts(L.fshape);
+  const{pts,sN}=getShapePts(L.fshape,baseR);
   const invert=L.gradDir==='out-in';const isLin=L.gradDir==='linear';
 
   if(isLin){
@@ -906,7 +910,7 @@ function drawRing(oc,L,cw,ch){
   const ax=(L.sizeX/Math.max(L.sizeX,L.sizeY))*(L.scaleX/100);
   const ay=(L.sizeY/Math.max(L.sizeX,L.sizeY))*(L.scaleY/100);
   const tS=Math.ceil(baseR*3.4);if(tS<2)return;const hc=tS/2;
-  const{pts,sN}=getShapePts(L.fshape||'circle');
+  const{pts,sN}=getShapePts(L.fshape||'circle',baseR);
   const blurPx=Math.max(1,L.blur*Math.min(cw,ch)/300);
   const wFrac=Math.max(.02,L.ringWidth/100);
   const invert=L.gradDir==='out-in',isLin=L.gradDir==='linear';
