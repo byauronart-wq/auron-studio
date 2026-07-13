@@ -3149,7 +3149,7 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
   return true;
 }
 async function saveProject(){
-  const data={version:10,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
+  const data={version:11,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
     global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
     layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,displaceTargets:[...L.displaceTargets]}))};
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
@@ -3172,6 +3172,11 @@ function loadProject(input){
         const m=el(mirrorId);if(m){if(m.tagName==='INPUT')m.value=v;else m.textContent=v;}
       });
       layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null}));
+      // compat v<11: o mapeamento de cores do modo Anéis foi corrigido (centro↔borda);
+      // ficheiros antigos invertiam — trocar gradDir preserva o aspecto original guardado
+      if((d.version||9)<11)layers.forEach(L=>{
+        if(L.ringsMode&&(L.gradDir==='in-out'||L.gradDir==='out-in'))L.gradDir=L.gradDir==='in-out'?'out-in':'in-out';
+      });
       layers.forEach(L=>{
         if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}
         if(L.maskSrc){const img=new Image();img.onload=()=>{L._mask=img;render();};img.src=L.maskSrc;}
