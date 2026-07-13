@@ -851,7 +851,13 @@ function drawBlob(oc,L,cw,ch){
   const baseR=Math.min(cw,ch)*.5*(Math.max(L.sizeX,L.sizeY)/100);
   const ax=(L.sizeX/Math.max(L.sizeX,L.sizeY))*(L.scaleX/100);
   const ay=(L.sizeY/Math.max(L.sizeX,L.sizeY))*(L.scaleY/100);
-  const tS=Math.ceil(baseR*3.6);if(tS<2)return;
+  // tSL = tamanho lógico do stamp no canvas final; o temporário físico é limitado
+  // a MAXT (limite de área de canvas do Chrome ~16384² — acima disso o canvas fica
+  // "morto" e a camada desaparecia silenciosamente em exports 300dpi de peças
+  // grandes). Renderiza-se à escala s e amplia-se no stamp — gradientes e blurs
+  // são invariantes a esta ampliação, não há perda visível.
+  const tSL=Math.ceil(baseR*3.6);if(tSL<2)return;
+  const MAXT=8192,s=Math.min(1,MAXT/tSL),tS=Math.ceil(tSL*s),R=baseR*s;
   const tmp=document.createElement('canvas');tmp.width=tS;tmp.height=tS;
   const tc=tmp.getContext('2d');const hc=tS/2;
   const{pts,sN}=getShapePts(L.fshape,baseR);
@@ -860,7 +866,7 @@ function drawBlob(oc,L,cw,ch){
   if(isLin){
     const msk=document.createElement('canvas');msk.width=tS;msk.height=tS;const mc=msk.getContext('2d');
     mc.save();mc.translate(hc,hc);mc.rotate(L.rotate*Math.PI/180);mc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
-    mc.scale(baseR*sN*ax,baseR*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
+    mc.scale(R*sN*ax,R*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
     const ep=getLinearEndpoints(L,tS,tS,hc,hc);
     const g=tc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);
     L.colors.forEach((c,i)=>g.addColorStop(i/Math.max(1,L.colors.length-1),c));
@@ -870,18 +876,21 @@ function drawBlob(oc,L,cw,ch){
     // preenchimento sólido — forma completamente plana com cor única
     tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);
     tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
-    tc.scale(baseR*sN*ax,baseR*sN*ay);drawSP(tc,pts);tc.restore();
+    tc.scale(R*sN*ax,R*sN*ay);drawSP(tc,pts);tc.restore();
     tc.fillStyle=L.colors[L.colors.length-1]||L.colors[0]||'#ffffff';tc.fill();
   } else if(L.ringsMode){
     const n=Math.max(2,L.ringsCount||5);
-    const softPx=Math.max(1,(L.ringsSoft||6)*Math.min(cw,ch)/600);
+    const softPx=Math.max(.5,(L.ringsSoft||6)*Math.min(cw,ch)/600*s);
+    // buffers reutilizados entre anéis (evita alocar 2 canvas grandes por anel)
+    const rC=document.createElement('canvas');rC.width=tS;rC.height=tS;const rc=rC.getContext('2d');
+    const bC=document.createElement('canvas');bC.width=tS;bC.height=tS;const bcx=bC.getContext('2d');
     for(let i=n;i>=0;i--){
-      const t=i/n;const ringR=baseR*(.08+.92*t);if(ringR<1)continue;
+      const t=i/n;const ringR=R*(.08+.92*t);if(ringR<1)continue;
       const ct=invert?t:1-t;const[r,g,b]=interpColor(L.colors,ct);
-      const rC=document.createElement('canvas');rC.width=tS;rC.height=tS;const rc=rC.getContext('2d');
+      rc.clearRect(0,0,tS,tS);
       rc.save();rc.translate(hc,hc);rc.rotate(L.rotate*Math.PI/180);rc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       rc.scale(ringR*sN*ax,ringR*sN*ay);drawSP(rc,pts);rc.restore();rc.fillStyle=`rgb(${cl(r)},${cl(g)},${cl(b)})`;rc.fill();
-      const bC=document.createElement('canvas');bC.width=tS;bC.height=tS;bC.getContext('2d').filter=`blur(${softPx}px)`;bC.getContext('2d').drawImage(rC,0,0);
+      bcx.clearRect(0,0,tS,tS);bcx.filter=`blur(${softPx}px)`;bcx.drawImage(rC,0,0);bcx.filter='none';
       tc.globalAlpha=(L.core/100)*.85*(1-t*.2);tc.drawImage(bC,0,0);
     }
     tc.globalAlpha=1;
@@ -890,7 +899,7 @@ function drawBlob(oc,L,cw,ch){
     for(let pass=P;pass>=1;pass--){
       const tr=pass/P;const ct=invert?tr:1-tr;
       tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
-      const sc=baseR*tr*sN;tc.scale(sc*ax,sc*ay);drawSP(tc,pts);
+      const sc=R*tr*sN;tc.scale(sc*ax,sc*ay);drawSP(tc,pts);
       const[r,g,b]=interpColor(L.colors,ct);
       const cA=(L.core/100)*.92;
       const a=pass===1?cA:cA*(1-(pass-1)/(P-1)*.72);
@@ -898,9 +907,10 @@ function drawBlob(oc,L,cw,ch){
     }
   }
   tc.globalAlpha=1;
-  const blurPx=Math.max(0,L.blur*Math.min(cw,ch)/300);
-  if(blurPx>.5){const bf=document.createElement('canvas');bf.width=tS;bf.height=tS;bf.getContext('2d').filter=`blur(${blurPx}px)`;bf.getContext('2d').drawImage(tmp,0,0);oc.drawImage(bf,cx-tS/2,cy-tS/2,tS,tS);}
-  else oc.drawImage(tmp,cx-tS/2,cy-tS/2,tS,tS);
+  const blurEff=Math.max(0,L.blur*Math.min(cw,ch)/300);
+  oc.imageSmoothingEnabled=true;oc.imageSmoothingQuality='high';
+  if(blurEff>.5){const bf=document.createElement('canvas');bf.width=tS;bf.height=tS;bf.getContext('2d').filter=`blur(${blurEff*s}px)`;bf.getContext('2d').drawImage(tmp,0,0);oc.drawImage(bf,cx-tSL/2,cy-tSL/2,tSL,tSL);}
+  else oc.drawImage(tmp,cx-tSL/2,cy-tSL/2,tSL,tSL);
 }
 
 // ═══ DRAW RING ════════════════════════════════════════════════════════════════
@@ -909,15 +919,17 @@ function drawRing(oc,L,cw,ch){
   const baseR=Math.min(cw,ch)*.5*(Math.max(L.sizeX,L.sizeY)/100);
   const ax=(L.sizeX/Math.max(L.sizeX,L.sizeY))*(L.scaleX/100);
   const ay=(L.sizeY/Math.max(L.sizeX,L.sizeY))*(L.scaleY/100);
-  const tS=Math.ceil(baseR*3.4);if(tS<2)return;const hc=tS/2;
+  // mesmo esquema do drawBlob: temporário físico limitado a MAXT, stamp ampliado
+  const tSL=Math.ceil(baseR*3.4);if(tSL<2)return;
+  const MAXT=8192,s=Math.min(1,MAXT/tSL),tS=Math.ceil(tSL*s),R=baseR*s;const hc=tS/2;
   const{pts,sN}=getShapePts(L.fshape||'circle',baseR);
-  const blurPx=Math.max(1,L.blur*Math.min(cw,ch)/300);
+  const blurPx=Math.max(.5,L.blur*Math.min(cw,ch)/300*s);
   const wFrac=Math.max(.02,L.ringWidth/100);
   const invert=L.gradDir==='out-in',isLin=L.gradDir==='linear';
   const oC=document.createElement('canvas');oC.width=tS;oC.height=tS;const oc2=oC.getContext('2d');
   oc2.save();oc2.translate(hc,hc);oc2.rotate(L.rotate*Math.PI/180);oc2.transform(1,L.skewY/100,L.skewX/100,1,0,0);
-  oc2.scale(baseR*sN*ax,baseR*sN*ay);drawSP(oc2,pts);oc2.restore();oc2.fillStyle=hexA(L.colors[0],1);oc2.fill();
-  const innerR=baseR*(1-wFrac);
+  oc2.scale(R*sN*ax,R*sN*ay);drawSP(oc2,pts);oc2.restore();oc2.fillStyle=hexA(L.colors[0],1);oc2.fill();
+  const innerR=R*(1-wFrac);
   const iC=document.createElement('canvas');iC.width=tS;iC.height=tS;const ic=iC.getContext('2d');
   ic.save();ic.translate(hc,hc);ic.rotate(L.rotate*Math.PI/180);ic.transform(1,L.skewY/100,L.skewX/100,1,0,0);
   ic.scale(innerR*sN*ax,innerR*sN*ay);drawSP(ic,pts);ic.restore();ic.fillStyle='#000';ic.fill();
@@ -925,10 +937,11 @@ function drawRing(oc,L,cw,ch){
   const rf=document.createElement('canvas');rf.width=tS;rf.height=tS;const rc=rf.getContext('2d');
   let grad;
   if(isLin){const ep=getLinearEndpoints(L,tS,tS,hc,hc);grad=rc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);L.colors.forEach((c,i)=>grad.addColorStop(i/Math.max(1,L.colors.length-1),c));}
-  else{grad=rc.createRadialGradient(hc,hc,innerR*.85,hc,hc,baseR);const cs=invert?[...L.colors].reverse():L.colors;cs.forEach((c,i)=>grad.addColorStop(i/(cs.length-1),c));}
+  else{grad=rc.createRadialGradient(hc,hc,innerR*.85,hc,hc,R);const cs=invert?[...L.colors].reverse():L.colors;cs.forEach((c,i)=>grad.addColorStop(i/(cs.length-1),c));}
   rc.fillStyle=grad;rc.fillRect(0,0,tS,tS);rc.globalCompositeOperation='destination-in';rc.drawImage(oC,0,0);
   const bf=document.createElement('canvas');bf.width=tS;bf.height=tS;bf.getContext('2d').filter=`blur(${blurPx}px)`;bf.getContext('2d').drawImage(rf,0,0);
-  oc.drawImage(bf,cx-tS/2,cy-tS/2,tS,tS);
+  oc.imageSmoothingEnabled=true;oc.imageSmoothingQuality='high';
+  oc.drawImage(bf,cx-tSL/2,cy-tSL/2,tSL,tSL);
 }
 
 // ═══ DRAW VEIL ════════════════════════════════════════════════════════════════
@@ -1639,7 +1652,7 @@ function drawLayerToCanvas(L,cw,ch){
     const oc2=off.getContext('2d');oc2.clearRect(0,0,cw,ch);oc2.drawImage(blurred,0,0);
   }
   // aplicar máscara de luminosidade se existir
-  if(L._mask)applyLayerMask(off,L,cw,ch);
+  if(L._mask&&L._mask.naturalWidth)applyLayerMask(off,L,cw,ch);
   // isolation: knockout — pinta um matte com a cor escolhida onde a camada tem alpha,
   // depois suaviza a borda do matte com blur para que a transição com as camadas debaixo
   // não seja dura/pixelizada. As camadas debaixo continuam invisíveis no interior do matte.
@@ -3155,7 +3168,7 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
 async function saveProject(){
   const data={version:11,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
     global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
-    layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,displaceTargets:[...L.displaceTargets]}))};
+    layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,displaceTargets:[...L.displaceTargets]}))};
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
   const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
   await saveBlobAs(blob,`auron_${stamp}.auron`,'application/json','AURON Project',['.auron'],'auron-project');
@@ -3175,7 +3188,9 @@ function loadProject(input){
         const mirrorId = k==='gNoise'?'gNoV':k==='gVig'?'gViV':k+'V';
         const m=el(mirrorId);if(m){if(m.tagName==='INPUT')m.value=v;else m.textContent=v;}
       });
-      layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null}));
+      // _img/_mask: descartar quaisquer resíduos serializados (ficheiros antigos
+      // guardavam "_mask":{} — um objecto vazio truthy que rebentava o 1º render)
+      layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null,_img:null,_mask:null}));
       layers.forEach(L=>{
         if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}
         if(L.maskSrc){const img=new Image();img.onload=()=>{L._mask=img;render();};img.src=L.maskSrc;}
@@ -3200,10 +3215,17 @@ function applyPanelMask(c,pw,ph){
 async function exportPNG(){
   // bleed: a arte estende-se BLEED mm para lá da linha de corte em todos os lados
   const bleedPx=MM300(BLEED||0);
-  const pw=MM300(W)+2*bleedPx,ph=MM300(H)+2*bleedPx;
+  let pw=MM300(W)+2*bleedPx,ph=MM300(H)+2*bleedPx,dpi=300;
+  // O canvas 2D do Chrome tem um limite real de ÁREA (~16384² ≈ 268MP); acima disso
+  // o canvas fica inoperante e o export sairia vazio ou corrompido sem qualquer
+  // aviso. Peças gigantes exportam ao maior DPI que couber no limite — o nome do
+  // ficheiro e o overlay indicam o DPI efectivo, nunca se produz lixo em silêncio.
+  const MAXAREA=240e6,MAXSIDE=32000;
+  const kFit=Math.min(1,Math.sqrt(MAXAREA/(pw*ph)),MAXSIDE/pw,MAXSIDE/ph);
+  if(kFit<1){pw=Math.floor(pw*kFit);ph=Math.floor(ph*kFit);dpi=Math.max(1,Math.floor(300*kFit));}
   const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
   const bleedTag=BLEED>0?`_bleed${BLEED}mm`:'';
-  const defaultName=`auron_${W}x${H}mm${bleedTag}_300dpi_${stamp}.png`;
+  const defaultName=`auron_${W}x${H}mm${bleedTag}_${dpi}dpi_${stamp}.png`;
   // Pede já o destino enquanto temos user-activation (showSaveFilePicker exige-o)
   let fileHandle=null;
   if(window.showSaveFilePicker){
@@ -3213,7 +3235,7 @@ async function exportPNG(){
   }
   const ov=document.createElement('div');
   ov.style.cssText='position:fixed;inset:0;background:rgba(5,7,10,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:12px;font-family:DM Sans,sans-serif;color:#9ab8c4;font-size:11px;letter-spacing:.04em';
-  ov.innerHTML=`<div style="font-size:13px;color:#5aacc8;letter-spacing:.28em">A RENDERIZAR</div><div style="color:#486070">${pw.toLocaleString()} × ${ph.toLocaleString()} px · 300 DPI</div><div style="font-size:9px;color:#324048">Pode demorar alguns segundos em formatos grandes</div>`;
+  ov.innerHTML=`<div style="font-size:13px;color:#5aacc8;letter-spacing:.28em">A RENDERIZAR</div><div style="color:#486070">${pw.toLocaleString()} × ${ph.toLocaleString()} px · ${dpi} DPI${dpi<300?' (limitado pelo tamanho máximo de canvas do browser)':''}</div><div style="font-size:9px;color:#324048">Pode demorar alguns segundos em formatos grandes</div>`;
   document.body.appendChild(ov);
   const tick=()=>new Promise(r=>setTimeout(r,0));
   setTimeout(async()=>{
