@@ -3172,11 +3172,6 @@ function loadProject(input){
         const m=el(mirrorId);if(m){if(m.tagName==='INPUT')m.value=v;else m.textContent=v;}
       });
       layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null}));
-      // compat v<11: o mapeamento de cores do modo Anéis foi corrigido (centro↔borda);
-      // ficheiros antigos invertiam — trocar gradDir preserva o aspecto original guardado
-      if((d.version||9)<11)layers.forEach(L=>{
-        if(L.ringsMode&&(L.gradDir==='in-out'||L.gradDir==='out-in'))L.gradDir=L.gradDir==='in-out'?'out-in':'in-out';
-      });
       layers.forEach(L=>{
         if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}
         if(L.maskSrc){const img=new Image();img.onload=()=>{L._mask=img;render();};img.src=L.maskSrc;}
