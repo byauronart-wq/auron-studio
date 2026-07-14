@@ -65,9 +65,26 @@
   };
 
   // ── design ──────────────────────────────────────────────────────────────────
+  // a forma de recorte do mockup (MK.mask/maskRadius) é independente da forma do
+  // painel do Studio (panelShape) — sem isto, o mockup usa sempre "rect, raio 0"
+  // por omissão, e os cantos do gradiente (mais escuros, longe do centro) que a
+  // aba Design recorta corretamente (via panelShape) ficam visíveis no mockup.
+  function syncMaskFromPanelShape(){
+    if(typeof panelShape==='undefined') return;
+    const MAP={rect:['rect',0],rounded:['rect',10],sq:['square',0],sqr:['square',10],oval:['ellipse',0],circle:['circle',0]};
+    const m=MAP[panelShape]; if(!m) return;
+    MK.mask=m[0]; MK.maskRadius=m[1];
+    if($('mkMask'))$('mkMask').value=MK.mask;
+    if($('mkRadius'))$('mkRadius').value=MK.maskRadius;
+    if($('mkRadiusV'))$('mkRadiusV').textContent=Math.round(MK.maskRadius);
+    if($('mkRadiusRow'))$('mkRadiusRow').style.display=shapeHasCorners()?'':'none';
+  }
   window.mockUseDesign = function(){
     const c=composeDesign(WORK_MAX);
     if(!c){ alert('Não há design no editor. Cria algo na aba Design primeiro.'); return; }
+    // só sincroniza na 1ª colocação — se o utilizador já tiver escolhido outra forma
+    // de propósito para este mockup, uma actualização do design não a deve repor.
+    if(!MK.design) syncMaskFromPanelShape();
     setDesign(c,c.width,c.height);
   };
   window.mockLoadPNG = function(input){
