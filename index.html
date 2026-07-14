@@ -177,6 +177,8 @@ select:focus{border-color:var(--bac)}
 .cs{display:flex;flex-direction:column;align-items:center;gap:2px}
 .cs input[type=color]{width:22px;height:18px}
 .csp{font-size:6px;color:var(--m1);text-align:center}
+.cs input.csr{flex:none;width:26px;height:2px;margin:1px 0}
+.cs input.csr::-webkit-slider-thumb{width:7px;height:7px}
 .csd{width:22px;height:11px;font-size:8px;background:transparent;border:1px solid var(--b0);color:var(--m1);border-radius:var(--r1);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s}
 .csd:hover{border-color:rgba(200,72,104,.4);color:var(--dg2)}
 .csa{width:18px;height:18px;font-size:11px;align-self:center;background:transparent;border:1px solid var(--b0);color:var(--m1);border-radius:var(--r1);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .12s}
@@ -637,11 +639,39 @@ function getShapePts(fs,radius){
   return{pts,sN,ex:mx*sN,ey:my*sN};
 }
 function drawSP(c,pts){c.beginPath();pts.forEach((p,i)=>{if(i===0)c.moveTo(p.x,p.y);else c.lineTo(p.x,p.y);});c.closePath();}
-function interpColor(colors,t){
-  const idx=t*(colors.length-1),ci=Math.floor(idx),cn=Math.min(ci+1,colors.length-1),cf=idx-ci;
-  const a=hexRGB(colors[ci]),b=hexRGB(colors[cn]);
+// posArr (opcional): posição 0..1 de cada cor, mesmo comprimento que 'colors'. Sem
+// isto, assume espaçamento uniforme (comportamento antigo, ficheiros/camadas sem
+// L.colorPos definido). Não precisa de vir ordenado — arrastar um stop para lá de
+// outro só troca a ordem visual, nunca parte a interpolação.
+function interpColor(colors,t,posArr){
+  if(!posArr||posArr.length!==colors.length){
+    const idx=t*(colors.length-1),ci=Math.floor(idx),cn=Math.min(ci+1,colors.length-1),cf=idx-ci;
+    const a=hexRGB(colors[ci]),b=hexRGB(colors[cn]);
+    return[lerp(a[0],b[0],cf),lerp(a[1],b[1],cf),lerp(a[2],b[2],cf)];
+  }
+  const n=colors.length;
+  const order=posArr.map((_,i)=>i).sort((a,b)=>posArr[a]-posArr[b]);
+  const sp=order.map(i=>posArr[i]),sc=order.map(i=>colors[i]);
+  if(t<=sp[0])return hexRGB(sc[0]);
+  if(t>=sp[n-1])return hexRGB(sc[n-1]);
+  let i=0;while(i<n-2&&sp[i+1]<t)i++;
+  const span=Math.max(1e-6,sp[i+1]-sp[i]),cf=(t-sp[i])/span;
+  const a=hexRGB(sc[i]),b=hexRGB(sc[i+1]);
   return[lerp(a[0],b[0],cf),lerp(a[1],b[1],cf),lerp(a[2],b[2],cf)];
 }
+// posições normalizadas (0..1) de cada cor — usa L.colorPos se existir e tiver o
+// mesmo nº de entradas que L.colors; senão cai para espaçamento uniforme (mantém
+// ficheiros antigos e camadas novas a funcionar sem qualquer posição definida)
+function posFrac(colors,colorPos){
+  const n=colors.length;
+  if(Array.isArray(colorPos)&&colorPos.length===n)return colorPos.map(p=>Math.max(0,Math.min(100,+p||0))/100);
+  return n<=1?[0]:colors.map((_,i)=>i/(n-1));
+}
+function stopFrac(L){return posFrac(L.colors,L.colorPos);}
+// espelha as posições quando a direção do gradiente é invertida (out-in) — mantém
+// cada cor na sua posição relativa espelhada, emparelhada com o array de cores
+// já invertido ([...colors].reverse())
+function invertFrac(f){return f.slice().reverse().map(p=>1-p);}
 
 // ═══ LAYER FACTORY ════════════════════════════════════════════════════════════
 function mkLayer(type,over){
@@ -883,7 +913,7 @@ function drawBlob(oc,L,cw,ch){
     mc.scale(R*sN*ax,R*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
     const ep=getLinearEndpoints(L,tS,tS,hc,hc,shapeHalfExtent(L,R*ax*ex,R*ay*ey));
     const g=tc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);
-    L.colors.forEach((c,i)=>g.addColorStop(i/Math.max(1,L.colors.length-1),c));
+    const lf=stopFrac(L);L.colors.forEach((c,i)=>g.addColorStop(lf[i],c));
     tc.fillStyle=g;tc.fillRect(0,0,tS,tS);
     tc.globalCompositeOperation='destination-in';tc.drawImage(msk,0,0);tc.globalCompositeOperation='source-over';
   } else if(L.solidFill){
@@ -898,9 +928,10 @@ function drawBlob(oc,L,cw,ch){
     // buffers reutilizados entre anéis (evita alocar 2 canvas grandes por anel)
     const rC=document.createElement('canvas');rC.width=tS;rC.height=tS;const rc=rC.getContext('2d');
     const bC=document.createElement('canvas');bC.width=tS;bC.height=tS;const bcx=bC.getContext('2d');
+    const rf=stopFrac(L);
     for(let i=n;i>=0;i--){
       const t=i/n;const ringR=R*(.08+.92*t);if(ringR<1)continue;
-      const ct=invert?t:1-t;const[r,g,b]=interpColor(L.colors,ct);
+      const ct=invert?t:1-t;const[r,g,b]=interpColor(L.colors,ct,rf);
       rc.clearRect(0,0,tS,tS);
       rc.save();rc.translate(hc,hc);rc.rotate(L.rotate*Math.PI/180);rc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       rc.scale(ringR*sN*ax,ringR*sN*ay);drawSP(rc,pts);rc.restore();rc.fillStyle=`rgb(${cl(r)},${cl(g)},${cl(b)})`;rc.fill();
@@ -910,11 +941,12 @@ function drawBlob(oc,L,cw,ch){
     tc.globalAlpha=1;
   } else {
     const P=40; // passes suficientes p/ gradiente contínuo (P baixo = anéis/faixas visíveis)
+    const pf=stopFrac(L);
     for(let pass=P;pass>=1;pass--){
       const tr=pass/P;const ct=invert?tr:1-tr;
       tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       const sc=R*tr*sN;tc.scale(sc*ax,sc*ay);drawSP(tc,pts);
-      const[r,g,b]=interpColor(L.colors,ct);
+      const[r,g,b]=interpColor(L.colors,ct,pf);
       const cA=(L.core/100)*.92;
       const a=pass===1?cA:cA*(1-(pass-1)/(P-1)*.72);
       tc.fillStyle=`rgba(${cl(r)},${cl(g)},${cl(b)},${a/P*2.8})`;tc.fill();tc.restore();
@@ -950,8 +982,8 @@ function drawRing(oc,L,cw,ch){
   oc2.globalCompositeOperation='destination-out';oc2.drawImage(iC,0,0);oc2.globalCompositeOperation='source-over';
   const rf=document.createElement('canvas');rf.width=tS;rf.height=tS;const rc=rf.getContext('2d');
   let grad;
-  if(isLin){const ep=getLinearEndpoints(L,tS,tS,hc,hc,shapeHalfExtent(L,R*ax*ex,R*ay*ey));grad=rc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);L.colors.forEach((c,i)=>grad.addColorStop(i/Math.max(1,L.colors.length-1),c));}
-  else{grad=rc.createRadialGradient(hc,hc,innerR*.85,hc,hc,R);const cs=invert?[...L.colors].reverse():L.colors;cs.forEach((c,i)=>grad.addColorStop(i/(cs.length-1),c));}
+  if(isLin){const ep=getLinearEndpoints(L,tS,tS,hc,hc,shapeHalfExtent(L,R*ax*ex,R*ay*ey));grad=rc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);const lf=stopFrac(L);L.colors.forEach((c,i)=>grad.addColorStop(lf[i],c));}
+  else{grad=rc.createRadialGradient(hc,hc,innerR*.85,hc,hc,R);const cs=invert?[...L.colors].reverse():L.colors;const bf=stopFrac(L);const rf2=invert?invertFrac(bf):bf;cs.forEach((c,i)=>grad.addColorStop(rf2[i],c));}
   rc.fillStyle=grad;rc.fillRect(0,0,tS,tS);rc.globalCompositeOperation='destination-in';rc.drawImage(oC,0,0);
   const bf=document.createElement('canvas');bf.width=tS;bf.height=tS;bf.getContext('2d').filter=`blur(${blurPx}px)`;bf.getContext('2d').drawImage(rf,0,0);
   oc.imageSmoothingEnabled=true;oc.imageSmoothingQuality='high';
@@ -1421,7 +1453,8 @@ function drawMesh(oc,L,cw,ch){
   const mc=document.createElement('canvas');mc.width=cw;mc.height=ch;const m=mc.getContext('2d');
   m.lineWidth=lw;m.lineCap='round';m.lineJoin='round';
   const cols=(L.colors&&L.colors.length)?L.colors:['#9fe8ff'];
-  const segCol=(za,zb)=>{ if(L.meshColorMode==='flat')return L.meshLineColor||'#9fe8ff'; const t=Math.max(0,Math.min(1,((za+zb)/2-zmin)/dz));const[r,g,b]=interpColor(cols,t);return `rgb(${r|0},${g|0},${b|0})`; };
+  const meshF=cols===L.colors?stopFrac(L):posFrac(cols,null);
+  const segCol=(za,zb)=>{ if(L.meshColorMode==='flat')return L.meshLineColor||'#9fe8ff'; const t=Math.max(0,Math.min(1,((za+zb)/2-zmin)/dz));const[r,g,b]=interpColor(cols,t,meshF);return `rgb(${r|0},${g|0},${b|0})`; };
   const seg=(a,b)=>{const pa=proj(a),pb=proj(b);m.strokeStyle=segCol(a[2],b[2]);m.beginPath();m.moveTo(pa[0],pa[1]);m.lineTo(pb[0],pb[1]);m.stroke();};
   for(let i=0;i<=N;i++)for(let j=0;j<=N;j++){ if(i<N)seg(P[i][j],P[i+1][j]); if(j<N)seg(P[i][j],P[i][j+1]); }
   const glow=(L.meshGlow||0);
@@ -2301,6 +2334,7 @@ function deepCloneLayer(L){
     ...L,
     id:uid++,
     colors:[...L.colors],
+    colorPos:L.colorPos?[...L.colorPos]:L.colorPos,
     displaceTargets:[...(L.displaceTargets||[])],
     warpData:L.warpData?new Float32Array(L.warpData):null,
     meshPts:L.meshPts?L.meshPts.map(p=>({...p})):null,
@@ -2751,29 +2785,56 @@ function isolateColor(lid){
 function toggleAngRow(lid,v){const r=el(`angRow${lid}`);if(r)r.style.display=v==='linear'?'flex':'none';}
 
 // ═══ COLORS ══════════════════════════════════════════════════════════════════
+// Cada cor tem um slider de posição (0-100%) — arrastar liberta-a do espaçamento
+// uniforme e grava a posição em L.colorPos (array paralelo a L.colors, criado na
+// 1ª vez que se arrasta). Sem L.colorPos, mantém-se o espaçamento uniforme de
+// sempre — ficheiros antigos e camadas novas não mudam de aspecto.
 function wireColors(L){
   const cont=el(`cs${L.id}`);if(!cont)return;cont.innerHTML='';
+  const customized=Array.isArray(L.colorPos)&&L.colorPos.length===L.colors.length;
+  const frac=stopFrac(L);
   L.colors.forEach((c,i)=>{
     const w=document.createElement('div');w.className='cs';
     const inp=document.createElement('input');inp.type='color';inp.value=c;
     inp.addEventListener('input',()=>{saveUndo();L.colors[i]=inp.value;updGB(L);render();});
     const pos=document.createElement('div');pos.className='csp';
-    // Label adapta-se ao nº de cores: 1=cor única (modo sólido), 2=ctr/brd, 3+=percentagens
-    pos.textContent = L.colors.length===1 ? '◉ única'
+    // Label: sem posições customizadas usa ctr/brd/%; com customização, mostra sempre %
+    pos.textContent = customized ? `${Math.round(frac[i]*100)}%`
+                    : L.colors.length===1 ? '◉ única'
                     : i===0 ? '◉ ctr'
                     : i===L.colors.length-1 ? '○ brd'
                     : `${Math.round(i/(L.colors.length-1)*100)}%`;
-    w.appendChild(inp);w.appendChild(pos);
+    const slider=document.createElement('input');slider.type='range';slider.min=0;slider.max=100;slider.step=1;
+    slider.className='csr';slider.value=Math.round(frac[i]*100);slider.title='Posição do stop no gradiente';
+    slider.addEventListener('input',()=>{
+      saveUndo();
+      if(!Array.isArray(L.colorPos)||L.colorPos.length!==L.colors.length)L.colorPos=stopFrac(L).map(f=>Math.round(f*100));
+      L.colorPos[i]=+slider.value;
+      pos.textContent=`${slider.value}%`;
+      updGB(L);render();
+    });
+    w.appendChild(inp);w.appendChild(slider);w.appendChild(pos);
     // Mostrar × sempre que houver mais de 1 cor (permite descer até 1 cor única para modo sólido)
-    if(L.colors.length>1){const d=document.createElement('button');d.className='csd';d.textContent='×';d.title='Remover esta cor';d.addEventListener('click',()=>{saveUndo();L.colors.splice(i,1);wireColors(L);updGB(L);render();});w.appendChild(d);}
+    if(L.colors.length>1){const d=document.createElement('button');d.className='csd';d.textContent='×';d.title='Remover esta cor';d.addEventListener('click',()=>{saveUndo();L.colors.splice(i,1);if(Array.isArray(L.colorPos))L.colorPos.splice(i,1);wireColors(L);updGB(L);render();});w.appendChild(d);}
     cont.appendChild(w);
   });
   const a=document.createElement('button');a.className='csa';a.textContent='+';
-  a.addEventListener('click',()=>{saveUndo();L.colors.splice(Math.floor(L.colors.length/2),0,L.colors[Math.floor(L.colors.length/2)]||'#ffffff');wireColors(L);updGB(L);render();});
+  a.addEventListener('click',()=>{
+    saveUndo();
+    const mid=Math.floor(L.colors.length/2);
+    const newColor=L.colors[mid]||'#ffffff';
+    if(Array.isArray(L.colorPos)&&L.colorPos.length===L.colors.length){
+      const before=L.colorPos[mid-1],after=L.colorPos[mid];
+      const np=(before!=null&&after!=null)?Math.round((before+after)/2):Math.round((stopFrac(L)[mid]??0.5)*100);
+      L.colorPos.splice(mid,0,np);
+    }
+    L.colors.splice(mid,0,newColor);
+    wireColors(L);updGB(L);render();
+  });
   cont.appendChild(a);updGB(L);
 }
-function updGB(L){const c=el(`gb${L.id}`);if(!c)return;c.width=c.offsetWidth||180;const gc=c.getContext('2d');const g=gc.createLinearGradient(0,0,c.width,0);L.colors.forEach((col,i)=>g.addColorStop(i/Math.max(1,L.colors.length-1),col));gc.fillStyle=g;gc.fillRect(0,0,c.width,5);}
-function applyGP(lid,pid){if(!pid)return;const L=layers.find(l=>l.id===lid),p=GRAD_P.find(g=>g.id===pid);if(!L||!p)return;saveUndo();L.colors=[...p.colors];wireColors(L);updGB(L);render();}
+function updGB(L){const c=el(`gb${L.id}`);if(!c)return;c.width=c.offsetWidth||180;const gc=c.getContext('2d');const g=gc.createLinearGradient(0,0,c.width,0);const gf=stopFrac(L);L.colors.forEach((col,i)=>g.addColorStop(gf[i],col));gc.fillStyle=g;gc.fillRect(0,0,c.width,5);}
+function applyGP(lid,pid){if(!pid)return;const L=layers.find(l=>l.id===lid),p=GRAD_P.find(g=>g.id===pid);if(!L||!p)return;saveUndo();L.colors=[...p.colors];delete L.colorPos;wireColors(L);updGB(L);render();}
 
 // ═══ GERADOR DE GRADIENTES (randomizer + templates) ══════════════════════════
 function hsl2hex(h,s,l){ s/=100;l/=100; const a=s*Math.min(l,1-l);
@@ -2840,12 +2901,12 @@ function renderGradPreview(){ const cv=el('gradPrev'); if(!cv)return; const w=cv
   else { x.fillStyle='#0a0e13';x.fillRect(0,0,w,h); const g=x.createRadialGradient(w/2,h/2,2,w/2,h/2,h*0.62); CUR_GRAD.forEach((c,i)=>g.addColorStop(Math.min(1,i/Math.max(1,CUR_GRAD.length-1)),c)); x.fillStyle=g; x.beginPath();x.arc(w/2,h/2,h*0.46,0,Math.PI*2);x.fill(); }
 }
 function gradAddLayer(){ if(!CUR_GRAD){alert('Gera um gradiente primeiro.');return;} saveUndo(); const L=gradMakeLayer(CUR_GRAD); layers.push(L); activeId=L.id; renderList(); render(); updateHOv(); }
-function gradApplyActive(){ if(!CUR_GRAD)return; const L=layers.find(l=>l.id===activeId); if(!L){alert('Sem camada selecionada. Usa "Adicionar" ou seleciona uma camada na coluna direita.');return;} saveUndo(); L.colors=[...CUR_GRAD]; wireColors(L); updGB(L); render(); }
+function gradApplyActive(){ if(!CUR_GRAD)return; const L=layers.find(l=>l.id===activeId); if(!L){alert('Sem camada selecionada. Usa "Adicionar" ou seleciona uma camada na coluna direita.');return;} saveUndo(); L.colors=[...CUR_GRAD]; delete L.colorPos; wireColors(L); updGB(L); render(); }
 function gradSelectCur(){ if(!CUR_GRAD)return; SELECTED_GRAD=[...CUR_GRAD]; updateGradSel(); }
 function gradClearSel(){ SELECTED_GRAD=null; updateGradSel(); }
 function updateGradSel(){ const b=el('gradSelBar'); if(b)b.style.display=SELECTED_GRAD?'flex':'none'; const sw=el('gradSelSw'); if(sw&&SELECTED_GRAD)sw.style.background='radial-gradient(circle,'+SELECTED_GRAD.join(',')+')'; }
 function gradSaveCurGrad(){ if(!CUR_GRAD){alert('Gera um gradiente primeiro.');return;} const name=prompt('Nome do gradiente:','Grad '+(gradTemplates().length+1)); if(!name)return; const arr=gradTemplates(); arr.push({name,colors:[...CUR_GRAD]}); localStorage.setItem('auronGrads',JSON.stringify(arr)); renderGradModal(); }
-function gradUse(colors){ CUR_GRAD=[...colors]; renderGradPreview(); const L=layers.find(l=>l.id===activeId); if(L){ saveUndo(); L.colors=[...colors]; wireColors(L); updGB(L); render(); } else { SELECTED_GRAD=[...colors]; updateGradSel(); } }
+function gradUse(colors){ CUR_GRAD=[...colors]; renderGradPreview(); const L=layers.find(l=>l.id===activeId); if(L){ saveUndo(); L.colors=[...colors]; delete L.colorPos; wireColors(L); updGB(L); render(); } else { SELECTED_GRAD=[...colors]; updateGradSel(); } }
 function gradDelTemplate(i){ const arr=gradTemplates(); arr.splice(i,1); localStorage.setItem('auronGrads',JSON.stringify(arr)); renderGradModal(); }
 function gradGrid(){ spinBtn('gGridBtn',()=>{ saveUndo(); const cols=4,rows=3,mx=100/(cols+1),my=100/(rows+1);
   const famBase=(GRAD_DOMON&&GRAD_DOMS.length)?hexHue(GRAD_DOMS[0]):(CUR_GRAD?hexHue(CUR_GRAD[0]):Math.random()*360);
@@ -2912,7 +2973,7 @@ function saveUndo(){
 }
 function restoreState(snap){
   const s=JSON.parse(snap);
-  layers=s.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null}));
+  layers=s.layers.map(l=>({...l,colors:[...l.colors],colorPos:l.colorPos?[...l.colorPos]:l.colorPos,displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null}));
   layers.forEach(L=>{if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}});
   activeId=s.activeId;renderList();render();updateHOv();
 }
@@ -3153,7 +3214,7 @@ function renderThemes(){
     const nm=document.createElement('div');nm.className='tnm';nm.textContent=t.name;
     const del=document.createElement('button');del.className='tdel';del.textContent='×';del.addEventListener('click',e=>{e.stopPropagation();themes.splice(ti,1);renderThemes();});
     item.appendChild(nm);item.appendChild(sw);item.appendChild(del);
-    item.addEventListener('click',()=>{saveUndo();layers.forEach((L,i)=>{const p=t.palettes[i%t.palettes.length];if(p)L.colors=[...p];});renderList();render();});
+    item.addEventListener('click',()=>{saveUndo();layers.forEach((L,i)=>{const p=t.palettes[i%t.palettes.length];if(p){L.colors=[...p];delete L.colorPos;}});renderList();render();});
     list.appendChild(item);
   });
 }
@@ -3533,14 +3594,14 @@ function applySilhouette(){
 function instantiateScene(k){
   const src=SCENES[k];
   const idMap={};
-  const out=src.map(l=>{const nid=uid++;idMap[l.id]=nid;return{...l,id:nid,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])]};});
+  const out=src.map(l=>{const nid=uid++;idMap[l.id]=nid;return{...l,id:nid,colors:[...l.colors],colorPos:l.colorPos?[...l.colorPos]:l.colorPos,displaceTargets:[...(l.displaceTargets||[])]};});
   out.forEach(l=>{l.displaceTargets=l.displaceTargets.map(t=>idMap[t]).filter(t=>t!==undefined);});
   return out;
 }
 function buildPresets(){
   // secções Produto/Formato/Gradiente/Cenas removidas da coluna esquerda — guardas p/ segurança
   const fc=el('fmtChips'); if(fc)FMT_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{W=p.w;H=p.h;panelShape=p.s;enforceSquareIfNeeded();el('cwrap').style.borderRadius=panelR();document.querySelectorAll('.s-btn2').forEach(x=>x.classList.remove('on'));document.querySelector(`[data-s="${p.s}"]`)?.classList.add('on');setupCanvas();applyPanelClip();});fc.appendChild(b);});
-  const gc=el('gradChips'); if(gc)GRAD_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{const L=layers.find(l=>l.id===activeId);if(!L)return;saveUndo();L.colors=[...p.colors];wireColors(L);updGB(L);render();});gc.appendChild(b);});
+  const gc=el('gradChips'); if(gc)GRAD_P.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.addEventListener('click',()=>{const L=layers.find(l=>l.id===activeId);if(!L)return;saveUndo();L.colors=[...p.colors];delete L.colorPos;wireColors(L);updGB(L);render();});gc.appendChild(b);});
   const sc=el('sceneChips'); if(sc){const slabels={oceano:'Oceano',porsol:'Pôr do Sol',causticas:'Cáusticas',agua:'Água',bolha:'Bolha',hipnose:'Hipnose',silhoueta:'Silhoueta',aura:'Aura',estriado:'Vidro Estriado',orbita:'Órbita'};
   Object.keys(SCENES).forEach(k=>{const b=document.createElement('button');b.className='chip';b.textContent=slabels[k]||k;b.addEventListener('click',()=>{saveUndo();layers=instantiateScene(k);applySceneBg(k);activeId=layers[0].id;renderList();render();updateHOv();});sc.appendChild(b);});}
 }
