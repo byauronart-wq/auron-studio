@@ -630,7 +630,11 @@ function getShapePts(fs,radius){
   const gen=SHAPES[fs]||SHAPES.circle,pts=[];
   for(let i=0;i<=N;i++){const t=i/N*Math.PI*2;pts.push(gen(t));}
   let mx=0,my=0;pts.forEach(p=>{mx=Math.max(mx,Math.abs(p.x));my=Math.max(my,Math.abs(p.y));});
-  return{pts,sN:1/Math.max(mx,my,.001)};
+  const sN=1/Math.max(mx,my,.001);
+  // ex/ey = extensão real da forma por eixo, normalizada (0..1). Uma forma mais
+  // estreita num eixo (ex: elipse alta tem ex<1) precisa disto para o gradiente
+  // linear medir a largura CERTA nesse eixo — senão as cores das pontas ficam fora.
+  return{pts,sN,ex:mx*sN,ey:my*sN};
 }
 function drawSP(c,pts){c.beginPath();pts.forEach((p,i)=>{if(i===0)c.moveTo(p.x,p.y);else c.lineTo(p.x,p.y);});c.closePath();}
 function interpColor(colors,t){
@@ -717,10 +721,20 @@ function zoomStep(d){ZOOM=Math.max(.2,Math.min(4,ZOOM+(d>0?.2:-.2)));setupCanvas
 function zoomFit(){ZOOM=1;setupCanvas();}
 
 // ═══ DRAW HELPERS ════════════════════════════════════════════════════════════
-function getLinearEndpoints(L,w,h,cx,cy){
+// halfLen (opcional): meio-comprimento do gradiente ao longo do ângulo. Quando
+// dado, o gradiente vai exactamente de aresta a aresta da FORMA (todas as cores
+// visíveis). Sem ele, cai para a meia-diagonal do canvas — que é ~3.6× maior que
+// a peça, comprimindo o gradiente à faixa central e escondendo as cores das pontas.
+function getLinearEndpoints(L,w,h,cx,cy,halfLen){
   const angle=(L.gradAngle||0)*Math.PI/180;
-  const diag=Math.sqrt(w*w+h*h)/2;
+  const diag=(halfLen!=null?halfLen:Math.sqrt(w*w+h*h)/2);
   return{x0:cx-Math.cos(angle)*diag,y0:cy-Math.sin(angle)*diag,x1:cx+Math.cos(angle)*diag,y1:cy+Math.sin(angle)*diag};
+}
+// meio-comprimento do gradiente = projecção da forma (semi-eixos rx,ry, rodada
+// por L.rotate) na direcção do gradiente (gradAngle) → aresta-a-aresta.
+function shapeHalfExtent(L,rx,ry){
+  const phi=((L.gradAngle||0)-(L.rotate||0))*Math.PI/180;
+  return Math.max(1,Math.hypot(rx*Math.cos(phi),ry*Math.sin(phi)));
 }
 
 // ═══ DRAW VECTOR ═════════════════════════════════════════════════════════════
@@ -860,14 +874,14 @@ function drawBlob(oc,L,cw,ch){
   const MAXT=8192,s=Math.min(1,MAXT/tSL),tS=Math.ceil(tSL*s),R=baseR*s;
   const tmp=document.createElement('canvas');tmp.width=tS;tmp.height=tS;
   const tc=tmp.getContext('2d');const hc=tS/2;
-  const{pts,sN}=getShapePts(L.fshape,baseR);
+  const{pts,sN,ex,ey}=getShapePts(L.fshape,baseR);
   const invert=L.gradDir==='out-in';const isLin=L.gradDir==='linear';
 
   if(isLin){
     const msk=document.createElement('canvas');msk.width=tS;msk.height=tS;const mc=msk.getContext('2d');
     mc.save();mc.translate(hc,hc);mc.rotate(L.rotate*Math.PI/180);mc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
     mc.scale(R*sN*ax,R*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
-    const ep=getLinearEndpoints(L,tS,tS,hc,hc);
+    const ep=getLinearEndpoints(L,tS,tS,hc,hc,shapeHalfExtent(L,R*ax*ex,R*ay*ey));
     const g=tc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);
     L.colors.forEach((c,i)=>g.addColorStop(i/Math.max(1,L.colors.length-1),c));
     tc.fillStyle=g;tc.fillRect(0,0,tS,tS);
@@ -922,7 +936,7 @@ function drawRing(oc,L,cw,ch){
   // mesmo esquema do drawBlob: temporário físico limitado a MAXT, stamp ampliado
   const tSL=Math.ceil(baseR*3.4);if(tSL<2)return;
   const MAXT=8192,s=Math.min(1,MAXT/tSL),tS=Math.ceil(tSL*s),R=baseR*s;const hc=tS/2;
-  const{pts,sN}=getShapePts(L.fshape||'circle',baseR);
+  const{pts,sN,ex,ey}=getShapePts(L.fshape||'circle',baseR);
   const blurPx=Math.max(.5,L.blur*Math.min(cw,ch)/300*s);
   const wFrac=Math.max(.02,L.ringWidth/100);
   const invert=L.gradDir==='out-in',isLin=L.gradDir==='linear';
@@ -936,7 +950,7 @@ function drawRing(oc,L,cw,ch){
   oc2.globalCompositeOperation='destination-out';oc2.drawImage(iC,0,0);oc2.globalCompositeOperation='source-over';
   const rf=document.createElement('canvas');rf.width=tS;rf.height=tS;const rc=rf.getContext('2d');
   let grad;
-  if(isLin){const ep=getLinearEndpoints(L,tS,tS,hc,hc);grad=rc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);L.colors.forEach((c,i)=>grad.addColorStop(i/Math.max(1,L.colors.length-1),c));}
+  if(isLin){const ep=getLinearEndpoints(L,tS,tS,hc,hc,shapeHalfExtent(L,R*ax*ex,R*ay*ey));grad=rc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);L.colors.forEach((c,i)=>grad.addColorStop(i/Math.max(1,L.colors.length-1),c));}
   else{grad=rc.createRadialGradient(hc,hc,innerR*.85,hc,hc,R);const cs=invert?[...L.colors].reverse():L.colors;cs.forEach((c,i)=>grad.addColorStop(i/(cs.length-1),c));}
   rc.fillStyle=grad;rc.fillRect(0,0,tS,tS);rc.globalCompositeOperation='destination-in';rc.drawImage(oC,0,0);
   const bf=document.createElement('canvas');bf.width=tS;bf.height=tS;bf.getContext('2d').filter=`blur(${blurPx}px)`;bf.getContext('2d').drawImage(rf,0,0);
