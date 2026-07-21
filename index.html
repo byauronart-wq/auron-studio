@@ -18,20 +18,20 @@
   --ac:#c9703d;--ac2:#a85a30;
   --dg:#a02848;--dg2:#c84868;
   --gn:#286848;--gn2:#389060;
-  --r1:2px;--r2:4px;--r3:6px;
+  --r1:6px;--r2:9px;--r3:12px;
 }
 html,body{height:100%;overflow:hidden}
 body{background:var(--bg);color:var(--t0);font-family:'Inter',sans-serif;font-size:11px;font-weight:300;display:flex;flex-direction:column;line-height:1.4}
 
 /* TOPBAR */
-.tb{height:42px;min-height:42px;background:var(--p0);border-bottom:1px solid var(--b0);display:flex;align-items:center;padding:0 12px;gap:4px;flex-shrink:0;overflow-x:auto;overflow-y:hidden}
+.tb{height:46px;min-height:46px;background:rgba(15,13,17,.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--b0);display:flex;align-items:center;padding:0 14px;gap:4px;flex-shrink:0;overflow-x:auto;overflow-y:hidden}
 .brand{font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;letter-spacing:.34em;color:var(--t3);flex-shrink:0}
 .brand em{font-style:normal;color:var(--ac)}
 .bsub{font-size:7px;letter-spacing:.2em;color:var(--m2);text-transform:uppercase;align-self:flex-end;margin-bottom:5px;margin-left:2px;flex-shrink:0}
 .tsep{width:1px;height:20px;background:var(--b0);flex-shrink:0;margin:0 4px}
 .tsp{flex:1}
 .tg{display:flex;align-items:center;gap:2px}
-.tb-btn{display:flex;align-items:center;gap:4px;padding:4px 9px;background:transparent;border:1px solid transparent;color:var(--m2);font-family:'Inter',sans-serif;font-size:10px;font-weight:400;letter-spacing:.02em;cursor:pointer;border-radius:var(--r1);transition:all .12s;white-space:nowrap;flex-shrink:0;line-height:1}
+.tb-btn{display:flex;align-items:center;gap:5px;padding:6px 11px;background:transparent;border:1px solid transparent;color:var(--m2);font-family:'Inter',sans-serif;font-size:10px;font-weight:400;letter-spacing:.02em;cursor:pointer;border-radius:var(--r2);transition:all .12s;white-space:nowrap;flex-shrink:0;line-height:1}
 .tb-btn:hover{color:var(--t2);background:rgba(255,255,255,.04);border-color:var(--b1)}
 .tb-btn.hi{color:var(--ac);border-color:var(--bac);background:rgba(201,112,61,.06)}
 .tb-btn.add{color:var(--t1)}.tb-btn.add:hover{color:var(--ac);border-color:rgba(201,112,61,.35);background:rgba(201,112,61,.06)}
@@ -52,8 +52,8 @@ select.tb-btn{appearance:none;padding:3px 7px}
 .s-btn:hover,.s-btn.on{border-color:var(--bac);color:var(--ac);background:rgba(201,112,61,.05)}
 .s-btn.danger:hover{border-color:rgba(200,72,104,.35);color:var(--dg2)}
 .sbar label{display:flex;align-items:center;gap:5px;color:var(--m1);font-size:8px;white-space:nowrap;cursor:default}
-.sbar input[type=range]{width:64px;height:2px;-webkit-appearance:none;background:var(--b1);border-radius:2px;outline:none;cursor:pointer}
-.sbar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;border-radius:50%;background:var(--ac)}
+.sbar input[type=range]{width:64px;height:4px;-webkit-appearance:none;background:linear-gradient(90deg,var(--ac) calc(var(--p,50)*1%),var(--b1) calc(var(--p,50)*1%));border-radius:999px;outline:none;cursor:pointer}
+.sbar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--t3);box-shadow:0 0 0 1px rgba(11,10,13,.6)}
 .sbar select{background:var(--p2);border:1px solid var(--b1);color:var(--t1);font-family:'Inter',sans-serif;font-size:8px;padding:2px 4px;border-radius:var(--r1);outline:none}
 .sbv{font-size:8px;color:var(--t1);min-width:24px;font-variant-numeric:tabular-nums}
 
@@ -69,29 +69,37 @@ select.tb-btn{appearance:none;padding:3px 7px}
 .eye-ab:hover{border-color:var(--bac);color:var(--ac)}
 .eye-sw{width:8px;height:8px;border-radius:2px;border:1px solid rgba(255,255,255,.1);flex-shrink:0}
 
-/* WORKSPACE */
-.ws{display:flex;flex:1;overflow:hidden}
+/* WORKSPACE — painéis como cartões flutuantes arredondados sobre o fundo,
+   em vez de colunas coladas às bordas (look Figma/Spline, mais atual) */
+.ws{display:flex;flex:1;overflow:hidden;padding:10px;gap:10px;background:var(--bg)}
 
 /* PANELS */
-.lpanel,.rpanel{background:var(--p0);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:width .18s,min-width .18s}
-.lpanel{width:192px;min-width:192px;border-right:1px solid var(--b0)}
-.lpanel.closed{width:0;min-width:0}
-.rpanel{width:230px;min-width:230px;border-left:1px solid var(--b0)}
-.rpanel.closed{width:0;min-width:0}
-.ph{padding:8px 10px 7px;border-bottom:1px solid var(--b0);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px}
+.lpanel,.rpanel{background:var(--p0);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:width .18s,min-width .18s,border-width .18s;border:1px solid var(--b0);border-radius:14px}
+.lpanel,.rpanel{transition:width .18s,min-width .18s,border-width .18s,margin .18s}
+.lpanel{width:192px;min-width:192px}
+.lpanel.closed{width:0;min-width:0;border-width:0;margin-right:-10px}
+.rpanel{width:230px;min-width:230px}
+.rpanel.closed{width:0;min-width:0;border-width:0;margin-left:-10px}
+.ph{padding:10px 12px 9px;border-bottom:1px solid var(--b0);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:6px}
 .pht{font-size:8px;letter-spacing:.3em;text-transform:uppercase;color:var(--m2);font-weight:400}
-.ps{flex:1;overflow-y:auto;padding:9px 10px;gap:0}
+.ps{flex:1;overflow-y:auto;padding:11px 12px;gap:0}
 .sec{font-size:7px;letter-spacing:.28em;text-transform:uppercase;color:var(--m1);margin-bottom:6px;margin-top:2px}
 .dv{height:1px;background:var(--b0);margin:8px 0}
 .row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .lb{font-size:8px;letter-spacing:.04em;text-transform:uppercase;color:var(--m1);flex-shrink:0;width:52px}
 .lb2{width:68px}
 .vl{font-size:8px;color:var(--t1);width:28px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums}
-input[type=range]{-webkit-appearance:none;flex:1;height:2px;background:var(--b1);outline:none;border-radius:2px;cursor:pointer;min-width:0}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--ac);cursor:grab;transition:transform .1s;box-shadow:0 0 0 2px rgba(201,112,61,.25)}
-input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.2)}
-input[type=color]{width:24px;height:18px;border:1px solid var(--b1);border-radius:var(--r1);background:none;cursor:pointer;padding:1px;flex-shrink:0}
-select{background:var(--p2);border:1px solid var(--b1);color:var(--t1);font-family:'Inter',sans-serif;font-size:9px;padding:3px 5px;border-radius:var(--r1);cursor:pointer;flex:1;outline:none;min-width:0}
+/* sliders modernos: pista 4px com preenchimento terracota até ao manípulo
+   (a % vem da var --p, mantida por um pequeno script no fim do ficheiro)
+   e manípulo creme com aro — em vez do fio de 2px com bolinha minúscula */
+input[type=range]{-webkit-appearance:none;flex:1;height:4px;background:linear-gradient(90deg,var(--ac) calc(var(--p,50)*1%),var(--b1) calc(var(--p,50)*1%));outline:none;border-radius:999px;cursor:pointer;min-width:0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--t3);border:none;cursor:grab;transition:transform .12s,box-shadow .12s;box-shadow:0 0 0 1px rgba(11,10,13,.6),0 1px 4px rgba(0,0,0,.5)}
+input[type=range]:hover::-webkit-slider-thumb{box-shadow:0 0 0 1px rgba(11,10,13,.6),0 0 0 4px rgba(201,112,61,.22),0 1px 4px rgba(0,0,0,.5)}
+input[type=range]:active::-webkit-slider-thumb{cursor:grabbing;transform:scale(1.15)}
+input[type=color]{width:26px;height:20px;border:1px solid var(--b1);border-radius:var(--r1);background:none;cursor:pointer;padding:1px;flex-shrink:0;transition:border-color .12s}
+input[type=color]:hover{border-color:var(--b2)}
+select{appearance:none;-webkit-appearance:none;background-color:var(--p2);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23a49c91' stroke-width='1.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center;border:1px solid var(--b1);color:var(--t1);font-family:'Inter',sans-serif;font-size:9px;padding:4px 18px 4px 7px;border-radius:var(--r1);cursor:pointer;flex:1;outline:none;min-width:0}
+select:hover{border-color:var(--b2)}
 select:focus{border-color:var(--bac)}
 .m-btn{padding:3px 8px;background:transparent;border:1px solid var(--b0);color:var(--m2);font-family:'Inter',sans-serif;font-size:8px;border-radius:var(--r1);cursor:pointer;transition:all .12s;white-space:nowrap}
 .m-btn:hover{border-color:var(--bac);color:var(--ac)}
@@ -129,7 +137,7 @@ select:focus{border-color:var(--bac)}
 .tdel{background:transparent;border:none;color:var(--m1);cursor:pointer;font-size:10px;padding:0 2px;transition:color .12s}.tdel:hover{color:var(--dg2)}
 
 /* CENTER */
-.ctr{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background:#0a090c;cursor:default}
+.ctr{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background:#09080b;cursor:default;border:1px solid var(--b0);border-radius:14px}
 /* checkerboard for transparency — subtil e quente, para não gritar
    "ferramenta técnica" em gravações de ecrã (a grelha de fundo saiu
    pela mesma razão) */
@@ -190,6 +198,14 @@ select:focus{border-color:var(--bac)}
 .fsb{background:var(--p2);border:1px solid var(--b1);color:var(--t1);font-size:8px;font-weight:400;padding:4px 2px;border-radius:var(--r1);cursor:pointer;text-align:center;transition:all .12s;letter-spacing:.02em}
 .fsb:hover{border-color:var(--bac);color:var(--t3);background:rgba(201,112,61,.08)}
 .fsb.on{border-color:var(--bac);color:var(--ac);background:rgba(201,112,61,.12);font-weight:500}
+/* interruptor real (pill + botão deslizante) — substitui os antigos botões
+   de texto "ON/OFF"; o texto continua lá dentro (acessibilidade) mas fica
+   invisível via font-size:0 */
+.swt{position:relative;width:34px;height:18px;flex:none;margin-left:auto;border-radius:999px;background:var(--m0);border:1px solid var(--b1);cursor:pointer;padding:0;font-size:0;color:transparent;transition:background .18s,border-color .18s}
+.swt::before{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--t1);transition:left .18s ease,background .18s}
+.swt:hover{border-color:var(--bac)}
+.swt.on{background:rgba(201,112,61,.55);border-color:rgba(201,112,61,.65)}
+.swt.on::before{left:18px;background:var(--t3)}
 .bhi{font-size:8px;color:var(--t0);margin-bottom:5px;padding-left:57px;line-height:1.55}
 .la{border-top:1px solid var(--b0);padding:5px 8px;display:flex;gap:3px;flex-shrink:0}
 .ib{background:transparent;border:1px solid var(--b0);color:var(--m2);font-family:'Inter',sans-serif;font-size:8px;padding:4px 7px;border-radius:var(--r1);cursor:pointer;transition:all .12s;flex:1;text-align:center}
@@ -200,8 +216,8 @@ select:focus{border-color:var(--bac)}
 .blend-tag{display:inline-block;font-size:7px;padding:1px 5px;border-radius:10px;background:rgba(201,112,61,.1);border:1px solid rgba(201,112,61,.2);color:var(--ac);margin-bottom:5px;letter-spacing:.03em}
 
 /* REFERENCE */
-#refPan{width:0;min-width:0;background:var(--p0);border-left:1px solid var(--b0);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:width .18s,min-width .18s;position:relative}
-#refPan.open{width:220px;min-width:220px}
+#refPan{width:0;min-width:0;margin-left:-10px;background:var(--p0);border:0 solid var(--b0);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:width .18s,min-width .18s,border-width .18s,margin .18s;position:relative}
+#refPan.open{width:220px;min-width:220px;border-width:1px;margin-left:0}
 .refwrap{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#040506}
 .refdrop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--m1);font-size:8px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 .refdrop svg{opacity:.22;stroke:var(--m1)}
@@ -254,7 +270,8 @@ body.simple .pro{display:none!important}
    O botão de sair fica quase invisível (opacity .14) de propósito, para
    não aparecer na gravação; ganha opacidade ao passar o rato. */
 body.cine .tb,body.cine .sbar,body.cine #eyeBar,body.cine .lpanel,body.cine .rpanel,body.cine #refPan,body.cine #mockTabs,body.cine #themePanel{display:none!important}
-body.cine .ctr{background:var(--bg)}
+body.cine .ws{padding:0}
+body.cine .ctr{background:var(--bg);border:none;border-radius:0}
 body.cine .ctr::before{display:none}
 body.cine #guideOv{display:none!important}
 body.cine .cwrap{box-shadow:0 60px 160px -40px rgba(0,0,0,.95),0 0 0 1px rgba(243,239,233,.04)}
@@ -2415,7 +2432,7 @@ function colPicker(prop,lid,val,label){
 }
 function toggle(lid,prop,val,label){
   return`<div class="ir"><span class="il il2">${label}</span>
-    <button class="fsb${val?' on':''}" onclick="LP(${lid},'${prop}',!${val});renderList();render()" style="flex:1;font-size:8px">${val?'ON':'OFF'}</button></div>`;
+    <button class="swt${val?' on':''}" onclick="LP(${lid},'${prop}',!${val});renderList();render()">${val?'ON':'OFF'}</button></div>`;
 }
 
 function buildControls(L){
@@ -2473,7 +2490,7 @@ function buildControls(L){
     </div>
     <div class="ir">
       <span class="il il2">Isolar</span>
-      <button class="fsb${L.isolated?' on':''}" style="flex:1;font-size:8px" onclick="LP(${id},'isolated',${!L.isolated});renderList();render()" title="Mantém o gradiente e blur, mas pinta uma cor por trás (não deixa as camadas debaixo aparecerem pelas zonas translúcidas)">${L.isolated?'ON':'OFF'}</button>
+      <button class="swt${L.isolated?' on':''}" onclick="LP(${id},'isolated',${!L.isolated});renderList();render()" title="Mantém o gradiente e blur, mas pinta uma cor por trás (não deixa as camadas debaixo aparecerem pelas zonas translúcidas)">${L.isolated?'ON':'OFF'}</button>
     </div>
     ${L.isolated?(L.isolatedColor?`<div class="ir">
       <span class="il il2">Matte</span>
@@ -2751,7 +2768,7 @@ function buildDispTargets(L){
     <div class="dv"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
       <span style="font-size:7px;letter-spacing:.2em;text-transform:uppercase;color:var(--m1)">Distorcer camadas</span>
-      <button class="fsb${enabled?' on':''}" onclick="LP(${L.id},'displaceEnabled',!${enabled});renderList();render()" style="font-size:8px;padding:2px 9px">${enabled?'ON':'OFF'}</button>
+      <button class="swt${enabled?' on':''}" onclick="LP(${L.id},'displaceEnabled',!${enabled});renderList();render()">${enabled?'ON':'OFF'}</button>
     </div>
     <div style="${enabled?'':'opacity:.35;pointer-events:none'}">
       ${checks}
@@ -3886,6 +3903,22 @@ document.addEventListener('keydown',function(e){
   if((e.key==='c'||e.key==='C')&&!e.metaKey&&!e.ctrlKey&&!e.altKey){e.preventDefault();toggleCine();}
   else if(e.key==='Escape'&&document.body.classList.contains('cine')){toggleCine();}
 });
+
+/* PREENCHIMENTO DOS SLIDERS — a pista pinta terracota até ao manípulo via
+   var(--p). Três fontes de atualização: evento input (arrasto ao vivo),
+   MutationObserver (painéis reconstroem-se por innerHTML a cada seleção de
+   camada) e um varrimento de 300ms (valores mudados por código, ex. reset
+   ou carregar projeto — não disparam eventos). Só escreve quando muda. */
+function _rgFill(r){
+  var min=+r.min||0,max=(r.max!==''?+r.max:100),v=+r.value||0;
+  var p=max>min?((v-min)/(max-min))*100:0;p=Math.max(0,Math.min(100,p));
+  if(r._p!==p){r._p=p;r.style.setProperty('--p',p);}
+}
+function _rgScan(root){(root.querySelectorAll?root:document).querySelectorAll('input[type=range]').forEach(_rgFill);}
+document.addEventListener('input',function(e){if(e.target&&e.target.type==='range')_rgFill(e.target);},true);
+new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){if(n.nodeType===1)_rgScan(n);});});}).observe(document.body,{childList:true,subtree:true});
+setInterval(function(){_rgScan(document);},300);
+_rgScan(document);
 </script>
 </body>
 </html>
