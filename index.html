@@ -280,6 +280,31 @@ body.cine .cwrap{box-shadow:0 60px 160px -40px rgba(0,0,0,.95),0 0 0 1px rgba(24
 body.cine #cineBtnExit{display:flex}
 #cineMark{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:9000;display:none;font-family:'Outfit',sans-serif;font-weight:600;font-size:11px;letter-spacing:.5em;padding-left:.5em;color:rgba(243,239,233,.28);pointer-events:none}
 body.cine #cineMark{display:block}
+
+/* ═══ REPLAY + AURA VIVA (gravação de conteúdo) ═══
+   Durante o replay/aura os valores das camadas são mutados a cada frame —
+   esconder handles e bloquear o rato no palco evita edições a meio. */
+body.replay #hOv,body.replay #bRing,body.aura-live #hOv{display:none!important}
+body.replay .ctr{pointer-events:none}
+#auraBtn.live-on,#replayBtn.live-on{color:#ffce8a;border-color:rgba(255,206,138,.45);background:rgba(255,206,138,.08)}
+
+/* ═══ EXPORT SOCIAL ═══ */
+#socModal{position:fixed;inset:0;background:rgba(8,7,10,.88);z-index:10000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#socModal.on{display:flex}
+#socModal .box{background:var(--p0);border:1px solid var(--b1);border-radius:16px;padding:20px;width:320px;display:flex;flex-direction:column;gap:10px}
+#socModal .ttl{font-family:'Outfit',sans-serif;font-size:12px;letter-spacing:.28em;color:var(--t3);font-weight:600;margin-bottom:4px}
+.socsec{font-size:7px;letter-spacing:.28em;text-transform:uppercase;color:var(--m1);margin-top:4px}
+.socchips{display:flex;flex-wrap:wrap;gap:4px}
+.socchip{background:var(--p2);border:1px solid var(--b1);color:var(--t1);font-family:'Inter',sans-serif;font-size:9px;padding:6px 10px;border-radius:var(--r2);cursor:pointer;transition:all .12s}
+.socchip:hover{border-color:var(--bac)}
+.socchip.on{border-color:var(--bac);color:var(--ac);background:rgba(201,112,61,.12)}
+.socrow{display:flex;align-items:center;gap:8px;font-size:9px;color:var(--t1);margin-top:4px}
+#socModal .btns{display:flex;gap:6px;margin-top:8px}
+
+/* ═══ AUTOSAVE (recuperação) ═══ */
+#asToast{position:fixed;left:16px;bottom:16px;z-index:9500;background:var(--p1);border:1px solid var(--b1);border-radius:12px;padding:12px 14px;display:none;flex-direction:column;gap:9px;font-family:'Inter',sans-serif;font-size:10px;color:var(--t1);box-shadow:0 16px 48px rgba(0,0,0,.65);max-width:260px}
+#asToast.on{display:flex}
+#asToast .b{display:flex;gap:6px}
 </style>
 </head>
 <body>
@@ -349,6 +374,8 @@ body.cine #cineMark{display:block}
     <button class="tb-btn" id="bkBtn" onclick="toggleBacklight()" title="Simular a peça retroiluminada (LED por trás do acrílico)"><svg class="ico" viewBox="0 0 14 14"><circle cx="7" cy="7" r="3"/><line x1="7" y1="1" x2="7" y2="2.5"/><line x1="7" y1="11.5" x2="7" y2="13"/><line x1="1" y1="7" x2="2.5" y2="7"/><line x1="11.5" y1="7" x2="13" y2="7"/><line x1="2.8" y1="2.8" x2="3.8" y2="3.8"/><line x1="10.2" y1="10.2" x2="11.2" y2="11.2"/><line x1="2.8" y1="11.2" x2="3.8" y2="10.2"/><line x1="10.2" y1="3.8" x2="11.2" y2="2.8"/></svg>Backlight</button>
     <button class="tb-btn" id="guideBtn" onclick="toggleGuides()" title="Mostrar área segura e margem de corte"><svg class="ico" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" rx="1"/><rect x="3.5" y="3.5" width="7" height="7" rx=".5" stroke-dasharray="2 1.5"/></svg>Guias</button>
     <button class="tb-btn" id="cineBtn" onclick="toggleCine()" title="Modo Cine — esconde toda a interface para gravar o ecrã (tecla C · Esc sai)"><svg class="ico" viewBox="0 0 14 14"><rect x="1" y="3.5" width="8.5" height="7" rx="1.5"/><polygon points="9.5,7 13,4.5 13,9.5"/></svg>Cine</button>
+    <button class="tb-btn" id="replayBtn" onclick="startReplay()" title="Replay — a peça reconstrói-se camada a camada em Modo Cine (grava o ecrã). Esc cancela."><svg class="ico" viewBox="0 0 14 14"><path d="M2 7a5 5 0 1 1 1.5 3.5"/><polyline points="2,3.5 2,7 5.5,7"/><polygon points="6,5 6,9 9,7"/></svg>Replay</button>
+    <button class="tb-btn" id="auraBtn" onclick="toggleAura()" title="Aura viva — movimento contínuo e subtil para gravar loops. Clica outra vez para parar."><svg class="ico" viewBox="0 0 14 14"><circle cx="7" cy="7" r="2.2"/><path d="M7 1.5v1.6M7 10.9v1.6M1.5 7h1.6M10.9 7h1.6" opacity=".8"/><circle cx="7" cy="7" r="5.2" opacity=".4"/></svg>Aura</button>
     <button class="tb-btn" id="modeBtn" onclick="toggleMode()" title="Modo Simples esconde as ferramentas avançadas">Modo: Pro</button>
   </div>
   <div class="tsep"></div>
@@ -359,12 +386,50 @@ body.cine #cineMark{display:block}
     <input type="file" id="auronFile" accept=".auron" style="display:none" onchange="loadProject(this)">
   </div>
   <div class="tsep"></div>
+  <button class="tb-btn" onclick="openSocial()" title="Exportar a arte já dimensionada para Instagram / Pinterest (1080)"><svg class="ico" viewBox="0 0 14 14"><rect x="2.5" y="1" width="9" height="12" rx="1.5"/><circle cx="7" cy="6" r="2.2"/><line x1="7" y1="10.5" x2="7" y2="10.5"/></svg>Social</button>
   <button class="tb-btn primary" onclick="exportPNG()"><svg class="ico" viewBox="0 0 14 14"><rect x="1" y="10" width="12" height="3" rx=".5"/><line x1="7" y1="1" x2="7" y2="9"/><polyline points="4,6 7,9 10,6"/></svg>Exportar PNG · 300dpi</button>
 </div>
 
 <!-- MODO CINE: botão de sair (quase invisível na gravação) + wordmark -->
 <button id="cineBtnExit" onclick="toggleCine()">✕ Sair · C</button>
 <div id="cineMark">OLIV YVES</div>
+
+<!-- EXPORT SOCIAL -->
+<div id="socModal">
+  <div class="box">
+    <div class="ttl">EXPORTAR · SOCIAL</div>
+    <div class="socsec">Formato</div>
+    <div class="socchips" id="socFmt">
+      <button class="socchip on" data-w="1080" data-h="1080">Quadrado · 1:1</button>
+      <button class="socchip" data-w="1080" data-h="1350">Retrato · 4:5</button>
+      <button class="socchip" data-w="1080" data-h="1920">Story · 9:16</button>
+    </div>
+    <div class="socsec">Enquadramento</div>
+    <div class="socchips" id="socFit">
+      <button class="socchip on" data-fit="cover">Preencher</button>
+      <button class="socchip" data-fit="contain">Ajustar</button>
+    </div>
+    <div class="socsec">Fundo <span style="color:var(--m1)">(só no modo Ajustar)</span></div>
+    <div class="socchips" id="socBg">
+      <button class="socchip on" data-bg="#0b0a0d">Preto quente</button>
+      <button class="socchip" data-bg="#f3efe9">Creme</button>
+      <button class="socchip" data-bg="transparent">Transparente</button>
+    </div>
+    <div class="btns">
+      <button class="tb-btn" style="flex:1" onclick="closeSocial()">Cancelar</button>
+      <button class="tb-btn primary" style="flex:2" onclick="doSocialExport()">Exportar PNG</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUTOSAVE: aviso de recuperação -->
+<div id="asToast">
+  <div>Encontrámos uma sessão guardada automaticamente<span id="asWhen" style="color:var(--t3)"></span>. Recuperar?</div>
+  <div class="b">
+    <button class="tb-btn primary" style="flex:1" onclick="asRecover()">Recuperar</button>
+    <button class="tb-btn" style="flex:1" onclick="asDismiss()">Descartar</button>
+  </div>
+</div>
 
 <!-- DEFORM BAR -->
 <div id="dBar" class="sbar">
@@ -3280,39 +3345,47 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
   setTimeout(()=>URL.revokeObjectURL(a.href),10000);
   return true;
 }
-async function saveProject(){
-  const data={version:11,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
+// serializador do projeto — partilhado entre Guardar manual e o AUTOSAVE
+// (script no fim do ficheiro); mudanças ao formato ficam num sítio só
+function buildProjectData(){
+  return {version:11,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
     global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
     layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,displaceTargets:[...L.displaceTargets]}))};
+}
+async function saveProject(){
+  const data=buildProjectData();
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
   const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
   await saveBlobAs(blob,`auron_${stamp}.auron`,'application/json','AURON Project',['.auron'],'auron-project');
+}
+// aplica um objeto de projeto ao estado da app — partilhado entre abrir
+// ficheiro (loadProject) e recuperar autosave (asRecover)
+function loadProjectData(d){
+  W=d.W||297;H=d.H||420;panelShape=d.panelShape||'rect';themes=d.themes||[];ZOOM=d.ZOOM||1;
+  BLEED=d.bleed??3;SAFE=d.safe??5;CURRENT_PRODUCT=d.product||null;
+  if(el('bleedMm'))el('bleedMm').value=BLEED;if(el('safeMm'))el('safeMm').value=SAFE;
+  if(d.global)Object.entries(d.global).forEach(([k,v])=>{
+    const e2=el(k);if(e2)e2.value=v;
+    // sync any numeric mirror next to the slider (gBrV, gConV, gNoV special-case)
+    const mirrorId = k==='gNoise'?'gNoV':k==='gVig'?'gViV':k+'V';
+    const m=el(mirrorId);if(m){if(m.tagName==='INPUT')m.value=v;else m.textContent=v;}
+  });
+  // _img/_mask: descartar quaisquer resíduos serializados (ficheiros antigos
+  // guardavam "_mask":{} — um objecto vazio truthy que rebentava o 1º render)
+  layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null,_img:null,_mask:null}));
+  layers.forEach(L=>{
+    if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}
+    if(L.maskSrc){const img=new Image();img.onload=()=>{L._mask=img;render();};img.src=L.maskSrc;}
+  });
+  activeId=layers[0]?.id||null;uid=Math.max(0,...layers.map(l=>l.id))+1;
+  renderThemes();setupCanvas();renderList();render();updateHOv();
 }
 function loadProject(input){
   const file=input.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
-    try{
-      const d=JSON.parse(e.target.result);
-      W=d.W||297;H=d.H||420;panelShape=d.panelShape||'rect';themes=d.themes||[];ZOOM=d.ZOOM||1;
-      BLEED=d.bleed??3;SAFE=d.safe??5;CURRENT_PRODUCT=d.product||null;
-      if(el('bleedMm'))el('bleedMm').value=BLEED;if(el('safeMm'))el('safeMm').value=SAFE;
-      if(d.global)Object.entries(d.global).forEach(([k,v])=>{
-        const e2=el(k);if(e2)e2.value=v;
-        // sync any numeric mirror next to the slider (gBrV, gConV, gNoV special-case)
-        const mirrorId = k==='gNoise'?'gNoV':k==='gVig'?'gViV':k+'V';
-        const m=el(mirrorId);if(m){if(m.tagName==='INPUT')m.value=v;else m.textContent=v;}
-      });
-      // _img/_mask: descartar quaisquer resíduos serializados (ficheiros antigos
-      // guardavam "_mask":{} — um objecto vazio truthy que rebentava o 1º render)
-      layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null,_img:null,_mask:null}));
-      layers.forEach(L=>{
-        if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}
-        if(L.maskSrc){const img=new Image();img.onload=()=>{L._mask=img;render();};img.src=L.maskSrc;}
-      });
-      activeId=layers[0]?.id||null;uid=Math.max(0,...layers.map(l=>l.id))+1;
-      renderThemes();setupCanvas();renderList();render();updateHOv();
-    }catch(err){alert('Erro: '+err.message);}
+    try{loadProjectData(JSON.parse(e.target.result));}
+    catch(err){alert('Erro: '+err.message);}
   };
   reader.readAsText(file);input.value='';
 }
@@ -3326,6 +3399,57 @@ function applyPanelMask(c,pw,ph){
   else if(panelShape==='rounded'||panelShape==='sqr'){const r=Math.min(pw,ph)*.1;if(mc.roundRect){mc.beginPath();mc.roundRect(0,0,pw,ph,r);mc.fill();}else mc.fillRect(0,0,pw,ph);}
   else return;
   c.save();c.globalCompositeOperation='destination-in';c.drawImage(m,0,0);c.restore();
+}
+// COMPOSITOR partilhado print/social — renderiza a arte completa (camadas,
+// deslocamento, clipBelow, vinheta, ajustes globais, ruído, opacidade e
+// recorte do painel) num canvas pw×ph e devolve-o. Extraído VERBATIM de
+// exportPNG para o export social usar o MESMO pipeline — qualquer correção
+// de fidelidade futura vale automaticamente para os dois. st(msg) = callback
+// de estado opcional para overlays de progresso.
+async function composeArt(pw,ph,st){
+  st=st||(()=>{});
+  const tick=()=>new Promise(r=>setTimeout(r,0));
+  const ex=document.createElement('canvas');ex.width=pw;ex.height=ph;const ec=ex.getContext('2d');
+  const bgAlpha=el('bgOp').value/100*(1-el('bgTr').value/100);
+  if(bgAlpha>0){ec.globalAlpha=bgAlpha;ec.fillStyle=el('bgCol').value;ec.fillRect(0,0,pw,ph);ec.globalAlpha=1;}
+  const visible=layers.filter(L=>L.visible&&(soloId===null||L.id===soloId));
+  const offs=[];
+  for(const L of visible){
+    st(`A RENDERIZAR · ${L.name||L.type}`);
+    await tick();
+    offs.push({L,off:drawLayerToCanvas(L,pw,ph)});
+  }
+  for(const item of offs){
+    const{L}=item;if(!L.displaceEnabled||!L.displaceTargets.length)continue;
+    if(!['caustic','perlin','noise','grid','mesh'].includes(L.type))continue;
+    st(`A RENDERIZAR · deslocamento`);
+    await tick();
+    const dm=getDispMap(L,pw,ph);
+    L.displaceTargets.forEach(tid=>{const t=offs.find(x=>x.L.id===tid);if(t)applyDisplace(t.off,dm,L.displaceStrength,pw,ph);});
+  }
+  offs.forEach(item=>{
+    const{L,off}=item;
+    if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid','mesh'].includes(L.type))return;
+    if(L.clipBelow){
+      const snap=document.createElement('canvas');snap.width=pw;snap.height=ph;
+      const sc=snap.getContext('2d');sc.drawImage(ex,0,0);
+      sc.globalCompositeOperation='destination-in';sc.globalAlpha=L.opacity/100;sc.drawImage(off,0,0);
+      ec.clearRect(0,0,pw,ph);
+      if(bgAlpha>0){ec.globalAlpha=bgAlpha;ec.fillStyle=el('bgCol').value;ec.fillRect(0,0,pw,ph);ec.globalAlpha=1;}
+      ec.drawImage(snap,0,0);
+    } else {
+      ec.globalAlpha=L.opacity/100;ec.globalCompositeOperation=L.blend==='add'?'lighter':L.blend;ec.drawImage(off,0,0);
+    }
+    ec.globalAlpha=1;ec.globalCompositeOperation='source-over';
+  });
+  const vs=el('gVig').value/100;if(vs>0){ec.globalCompositeOperation='multiply';const vg=ec.createRadialGradient(pw/2,ph/2,ph*.1,pw/2,ph/2,ph*.75);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(.5,`rgba(0,0,0,${vs*.3})`);vg.addColorStop(1,`rgba(0,0,0,${vs*.9})`);ec.fillStyle=vg;ec.fillRect(0,0,pw,ph);ec.globalCompositeOperation='source-over';}
+  const br=el('gBr').value/100;if(br!==1){ec.globalCompositeOperation=br>1?'screen':'multiply';ec.globalAlpha=br>1?(br-1)*.5:(1-br)*.8;ec.fillStyle=br>1?'#fff':'#000';ec.fillRect(0,0,pw,ph);ec.globalAlpha=1;ec.globalCompositeOperation='source-over';}
+  st('A RENDERIZAR · ajustes finais');await tick();
+  applyGlobalAdjustments(ec,pw,ph);
+  const exGn=el('gNoise').value/100;if(exGn>0){const id=ec.getImageData(0,0,pw,ph);const dat=id.data;const a=exGn*.04;for(let i=0;i<dat.length;i+=4){const n=(Math.random()-.5)*255*a;dat[i]=cl(dat[i]+n);dat[i+1]=cl(dat[i+1]+n);dat[i+2]=cl(dat[i+2]+n);}ec.putImageData(id,0,0);}
+  applyDesignOpacity(ec,pw,ph);
+  applyPanelMask(ec,pw,ph);
+  return ex;
 }
 async function exportPNG(){
   // bleed: a arte estende-se BLEED mm para lá da linha de corte em todos os lados
@@ -3355,49 +3479,8 @@ async function exportPNG(){
   const tick=()=>new Promise(r=>setTimeout(r,0));
   setTimeout(async()=>{
     try{
-      const ex=document.createElement('canvas');ex.width=pw;ex.height=ph;const ec=ex.getContext('2d');
-      const bgAlpha=el('bgOp').value/100*(1-el('bgTr').value/100);
-      if(bgAlpha>0){ec.globalAlpha=bgAlpha;ec.fillStyle=el('bgCol').value;ec.fillRect(0,0,pw,ph);ec.globalAlpha=1;}
-      const visible=layers.filter(L=>L.visible&&(soloId===null||L.id===soloId));
-      const offs=[];
-      for(const L of visible){
-        ov.firstChild.textContent=`A RENDERIZAR · ${L.name||L.type}`;
-        await tick();
-        offs.push({L,off:drawLayerToCanvas(L,pw,ph)});
-      }
-      for(const item of offs){
-        const{L}=item;if(!L.displaceEnabled||!L.displaceTargets.length)continue;
-        if(!['caustic','perlin','noise','grid','mesh'].includes(L.type))continue;
-        ov.firstChild.textContent=`A RENDERIZAR · deslocamento`;
-        await tick();
-        const dm=getDispMap(L,pw,ph);
-        L.displaceTargets.forEach(tid=>{const t=offs.find(x=>x.L.id===tid);if(t)applyDisplace(t.off,dm,L.displaceStrength,pw,ph);});
-      }
-      offs.forEach(item=>{
-        const{L,off}=item;
-        if(L.displaceEnabled&&L.displaceTargets.length&&['caustic','perlin','noise','grid','mesh'].includes(L.type))return;
-        if(L.clipBelow){
-          const snap=document.createElement('canvas');snap.width=pw;snap.height=ph;
-          const sc=snap.getContext('2d');sc.drawImage(ex,0,0);
-          sc.globalCompositeOperation='destination-in';sc.globalAlpha=L.opacity/100;sc.drawImage(off,0,0);
-          ec.clearRect(0,0,pw,ph);
-          if(bgAlpha>0){ec.globalAlpha=bgAlpha;ec.fillStyle=el('bgCol').value;ec.fillRect(0,0,pw,ph);ec.globalAlpha=1;}
-          ec.drawImage(snap,0,0);
-        } else {
-          ec.globalAlpha=L.opacity/100;ec.globalCompositeOperation=L.blend==='add'?'lighter':L.blend;ec.drawImage(off,0,0);
-        }
-        ec.globalAlpha=1;ec.globalCompositeOperation='source-over';
-      });
-      const vs=el('gVig').value/100;if(vs>0){ec.globalCompositeOperation='multiply';const vg=ec.createRadialGradient(pw/2,ph/2,ph*.1,pw/2,ph/2,ph*.75);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(.5,`rgba(0,0,0,${vs*.3})`);vg.addColorStop(1,`rgba(0,0,0,${vs*.9})`);ec.fillStyle=vg;ec.fillRect(0,0,pw,ph);ec.globalCompositeOperation='source-over';}
-      const br=el('gBr').value/100;if(br!==1){ec.globalCompositeOperation=br>1?'screen':'multiply';ec.globalAlpha=br>1?(br-1)*.5:(1-br)*.8;ec.fillStyle=br>1?'#fff':'#000';ec.fillRect(0,0,pw,ph);ec.globalAlpha=1;ec.globalCompositeOperation='source-over';}
-      // pro-grade adjustments no PNG final — exactamente o que vês no preview
-      ov.firstChild.textContent='A RENDERIZAR · ajustes finais';await tick();
-      applyGlobalAdjustments(ec,pw,ph);
-      // ruído por cima de tudo
-      const exGn=el('gNoise').value/100;if(exGn>0){const id=ec.getImageData(0,0,pw,ph);const dat=id.data;const a=exGn*.04;for(let i=0;i<dat.length;i+=4){const n=(Math.random()-.5)*255*a;dat[i]=cl(dat[i]+n);dat[i+1]=cl(dat[i+1]+n);dat[i+2]=cl(dat[i+2]+n);}ec.putImageData(id,0,0);}
-      applyDesignOpacity(ec,pw,ph);
-      // recorte do formato do painel (círculo/oval/arredondado) — igual ao preview
-      applyPanelMask(ec,pw,ph);
+      // todo o pipeline vive em composeArt (partilhado com o export social)
+      const ex=await composeArt(pw,ph,m=>{ov.firstChild.textContent=m;});
       ex.toBlob(async blob=>{
         document.body.removeChild(ov);
         if(fileHandle){
@@ -3901,7 +3984,10 @@ document.addEventListener('keydown',function(e){
   var t=e.target;
   if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
   if((e.key==='c'||e.key==='C')&&!e.metaKey&&!e.ctrlKey&&!e.altKey){e.preventDefault();toggleCine();}
-  else if(e.key==='Escape'&&document.body.classList.contains('cine')){toggleCine();}
+  else if(e.key==='Escape'){
+    if(document.body.classList.contains('replay')){stopReplay();}       // Esc cancela replay primeiro
+    else if(document.body.classList.contains('cine')){toggleCine();}
+  }
 });
 
 /* PREENCHIMENTO DOS SLIDERS — a pista pinta terracota até ao manípulo via
@@ -3919,6 +4005,170 @@ document.addEventListener('input',function(e){if(e.target&&e.target.type==='rang
 new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){if(n.nodeType===1)_rgScan(n);});});}).observe(document.body,{childList:true,subtree:true});
 setInterval(function(){_rgScan(document);},300);
 _rgScan(document);
+
+/* ════════════════════════════════════════════════════════════════════
+   FERRAMENTAS DE CONTEÚDO (Instagram/Pinterest) + AUTOSAVE
+   Nada aqui toca no motor de render — só orquestram opacity/posição das
+   camadas (replay/aura) ou reutilizam composeArt/buildProjectData.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ---- REPLAY: a peça reconstrói-se camada a camada, em Modo Cine ---- */
+var _replayRAF=null,_replayOrig=null,_replayCine=false;
+function stopReplay(){
+  if(_replayRAF){cancelAnimationFrame(_replayRAF);_replayRAF=null;}
+  if(_replayOrig){_replayOrig.forEach(function(o){o.l.opacity=o.op;});_replayOrig=null;render();}
+  document.body.classList.remove('replay');
+  el('replayBtn')&&el('replayBtn').classList.remove('live-on');
+  // sai do cine só se fomos nós a ligá-lo; se o user já estava a gravar, mantém
+  if(_replayCine){document.body.classList.remove('cine');requestAnimationFrame(zoomFit);_replayCine=false;}
+}
+function startReplay(dur){
+  if(document.body.classList.contains('replay')){stopReplay();return;}
+  var vis=layers.filter(function(l){return l.visible!==false;});
+  if(!vis.length){alert('Adiciona camadas primeiro — o replay reconstrói a peça camada a camada.');return;}
+  dur=dur||18000;
+  _replayCine=!document.body.classList.contains('cine');
+  if(_replayCine){document.body.classList.add('cine');requestAnimationFrame(zoomFit);}
+  document.body.classList.add('replay');
+  el('replayBtn')&&el('replayBtn').classList.add('live-on');
+  // guarda as opacidades reais e arranca tudo a 0 (peça "apagada")
+  _replayOrig=layers.map(function(l){return {l:l,op:l.opacity};});
+  layers.forEach(function(l){l.opacity=0;});
+  render();
+  var n=vis.length,t0=performance.now();
+  var hold=0.10,build=0.80;                 // 10% preto no início, 80% a construir, 10% a repousar
+  var span=build/n, fade=Math.min(span*1.8,0.34);   // janelas sobrepostas → suave
+  function frame(now){
+    var t=Math.min(1,(now-t0)/dur);
+    vis.forEach(function(l,i){
+      var start=hold+i*span;
+      var lp=(t-start)/fade;                // progresso local desta camada
+      lp=Math.max(0,Math.min(1,lp));
+      var e=lp<.5?2*lp*lp:1-Math.pow(-2*lp+2,2)/2;   // easeInOutQuad
+      var orig=_replayOrig.find(function(o){return o.l===l;});
+      l.opacity=e*(orig?orig.op:100);
+    });
+    render();
+    if(t<1){_replayRAF=requestAnimationFrame(frame);}
+    else{_replayRAF=null;_replayOrig.forEach(function(o){o.l.opacity=o.op;});_replayOrig=null;render();
+      document.body.classList.remove('replay');el('replayBtn')&&el('replayBtn').classList.remove('live-on');
+      // fica em cine com a peça final (o user continua a gravar); Esc/C sai
+    }
+  }
+  _replayRAF=requestAnimationFrame(frame);
+}
+window.startReplay=startReplay;window.stopReplay=stopReplay;
+
+/* ---- AURA VIVA: deriva lenta e contínua para gravar loops ---- */
+var _auraRAF=null,_auraBase=null,_auraT0=0;
+var _AURA_TYPES=['blob','ring','veil','caustic','perlin'];
+function toggleAura(){
+  if(_auraRAF){
+    cancelAnimationFrame(_auraRAF);_auraRAF=null;
+    if(_auraBase){_auraBase.forEach(function(b){b.l.posX=b.x;b.l.posY=b.y;});_auraBase=null;render();}
+    el('auraBtn')&&el('auraBtn').classList.remove('live-on');
+    return;
+  }
+  var movers=layers.filter(function(l){return l.visible!==false&&_AURA_TYPES.includes(l.type);});
+  if(!movers.length){alert('Aura viva move camadas de foco/anel/véu — adiciona pelo menos uma.');return;}
+  _auraBase=movers.map(function(l,i){return {l:l,x:l.posX,y:l.posY,ph:i*1.7};});
+  el('auraBtn')&&el('auraBtn').classList.add('live-on');
+  _auraT0=performance.now();
+  function frame(now){
+    var t=(now-_auraT0)/1000;
+    _auraBase.forEach(function(b){
+      // órbita muito subtil (~1.1% do canvas) — "respiração", não deslocação
+      b.l.posX=b.x+Math.sin(t*0.32+b.ph)*1.1;
+      b.l.posY=b.y+Math.cos(t*0.24+b.ph*1.3)*1.1;
+    });
+    render();
+    _auraRAF=requestAnimationFrame(frame);
+  }
+  _auraRAF=requestAnimationFrame(frame);
+}
+window.toggleAura=toggleAura;
+
+/* ---- EXPORT SOCIAL: usa o MESMO compositor do PNG de impressão ---- */
+function _socPick(group,btn){[...el(group).children].forEach(function(c){c.classList.toggle('on',c===btn);});}
+document.addEventListener('click',function(e){
+  var c=e.target.closest('#socFmt .socchip,#socFit .socchip,#socBg .socchip');
+  if(c)_socPick(c.parentElement.id,c);
+});
+function openSocial(){
+  if(!layers.some(function(l){return l.visible!==false;})){alert('Não há nada visível para exportar.');return;}
+  el('socModal').classList.add('on');
+}
+function closeSocial(){el('socModal').classList.remove('on');}
+window.openSocial=openSocial;window.closeSocial=closeSocial;
+async function doSocialExport(){
+  var fmt=el('socFmt').querySelector('.on'),fit=el('socFit').querySelector('.on').dataset.fit,
+      bg=el('socBg').querySelector('.on').dataset.bg;
+  var TW=+fmt.dataset.w,TH=+fmt.dataset.h;
+  closeSocial();
+  // render da arte à sua própria proporção (lado maior ~1600 p/ nitidez)
+  var artLong=1600,aw,ah;
+  if(W>=H){aw=artLong;ah=Math.round(artLong*H/W);}else{ah=artLong;aw=Math.round(artLong*W/H);}
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(11,10,13,.92);display:flex;align-items:center;justify-content:center;z-index:10001;font-family:Inter,sans-serif;color:#c9703d;font-size:12px;letter-spacing:.28em';
+  ov.textContent='A EXPORTAR…';document.body.appendChild(ov);
+  await new Promise(function(r){setTimeout(r,40);});
+  try{
+    var art=await composeArt(aw,ah);
+    var out=document.createElement('canvas');out.width=TW;out.height=TH;var oc=out.getContext('2d');
+    if(bg!=='transparent'){oc.fillStyle=bg;oc.fillRect(0,0,TW,TH);}
+    var s,dw,dh,dx,dy;
+    if(fit==='cover'){s=Math.max(TW/aw,TH/ah);}else{s=Math.min(TW/aw,TH/ah);}
+    dw=aw*s;dh=ah*s;dx=(TW-dw)/2;dy=(TH-dh)/2;
+    oc.imageSmoothingQuality='high';oc.drawImage(art,dx,dy,dw,dh);
+    var stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    var name='oliv-yves_'+TW+'x'+TH+'_'+stamp+'.png';
+    out.toBlob(async function(blob){
+      document.body.removeChild(ov);
+      if(window.showSaveFilePicker){
+        try{var h=await window.showSaveFilePicker({suggestedName:name,types:[{description:'PNG',accept:{'image/png':['.png']}}],id:'auron-social',startIn:'desktop'});
+          var w=await h.createWritable();await w.write(blob);await w.close();}
+        catch(err){if(err.name!=='AbortError')alert('Erro: '+err.message);}
+      }else{var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(function(){URL.revokeObjectURL(a.href);},10000);}
+    },'image/png');
+  }catch(err){document.body.removeChild(ov);alert('Erro: '+err.message);}
+}
+window.doSocialExport=doSocialExport;
+
+/* ---- AUTOSAVE: rascunho a cada 30s + recuperação ---- */
+var AS_KEY='auronAutosave';
+function _autosave(){
+  if(!layers.length)return;                       // não gravar projeto vazio por cima de um bom
+  try{
+    var payload={t:Date.now(),data:buildProjectData()};
+    localStorage.setItem(AS_KEY,JSON.stringify(payload));
+  }catch(err){/* quota (projetos com imagens grandes) — ignora em silêncio */}
+}
+setInterval(_autosave,30000);
+window.addEventListener('beforeunload',_autosave);   // última fotografia ao fechar
+function asDismiss(){el('asToast').classList.remove('on');}
+function asRecover(){
+  try{
+    var p=JSON.parse(localStorage.getItem(AS_KEY));
+    if(p&&p.data)loadProjectData(p.data);
+  }catch(err){alert('Não foi possível recuperar: '+err.message);}
+  asDismiss();
+}
+window.asDismiss=asDismiss;window.asRecover=asRecover;
+window.addEventListener('load',function(){
+  setTimeout(function(){
+    // só oferecer se houver rascunho com camadas E o canvas atual estiver vazio
+    // (arranque limpo) — evita chatear a meio de uma sessão já em curso
+    if(layers.length)return;
+    try{
+      var p=JSON.parse(localStorage.getItem(AS_KEY));
+      if(!p||!p.data||!p.data.layers||!p.data.layers.length)return;
+      var d=new Date(p.t),hh=('0'+d.getHours()).slice(-2),mm=('0'+d.getMinutes()).slice(-2);
+      el('asWhen').textContent=' ('+hh+':'+mm+')';
+      el('asToast').classList.add('on');
+      setTimeout(asDismiss,14000);                // desaparece sozinho passado um tempo
+    }catch(err){}
+  },600);
+});
 </script>
 </body>
 </html>
