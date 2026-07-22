@@ -328,6 +328,9 @@ body.replay .ctr{pointer-events:none}
     <option value="500,500">500×500</option><option value="400,600">400×600</option>
     <option value="500,700">500×700</option><option value="600,800">600×800</option>
   </select>
+  <button class="tb-btn" onclick="rotatePanel()" title="Rodar formato 90° (vertical ↔ horizontal)">
+    <svg class="ico" viewBox="0 0 14 14"><path d="M11 4.5A5 5 0 1 0 12 8"/><polyline points="8,1 12,4.5 8,8"/></svg>
+  </button>
   <div class="tsep"></div>
   <div class="tg">
     <button class="tb-btn add" onclick="addLayer('blob')"><svg class="ico" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4.5"/><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>Foco</button>
@@ -489,6 +492,11 @@ body.replay .ctr{pointer-events:none}
       <button class="s-btn2"    data-s="circle"  onclick="setShape(this)">Círculo</button>
       <button class="s-btn2"    data-s="sq"      onclick="setShape(this)">Quad.</button>
       <button class="s-btn2"    data-s="sqr"     onclick="setShape(this)">Quad.R</button>
+      <button class="s-btn2" id="customShapeBtn" data-s="custom" onclick="pickCustomShape(this)" title="Desenhar um contorno à mão para um corte personalizado">✏ Person.</button>
+    </div>
+    <div class="row" id="customShapeRow" style="display:none">
+      <button class="s-btn" style="flex:1" onclick="startCustomDraw()">Redesenhar</button>
+      <button class="s-btn" style="flex:1" onclick="exportCustomShape()">Exportar corte (SVG)</button>
     </div>
     <div class="dv"></div>
     <div class="sec">Fundo do canvas</div>
@@ -586,6 +594,14 @@ body.replay .ctr{pointer-events:none}
     <div id="guideOv"><div class="safe"><span>área segura</span></div><div class="bleednote"></div></div>
     <div id="hOv"><svg id="hSvg"></svg></div>
     <div id="defOv"><div id="bRing"></div></div>
+    <canvas id="cdCv" style="position:absolute;inset:0;display:none;cursor:crosshair;z-index:5"></canvas>
+  </div>
+  <div id="cdBar" class="sbar" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:20;border-radius:var(--r1);border:1px solid var(--b0);width:auto">
+    <span style="font-size:8px;color:var(--m1)">Desenha o contorno do corte com o rato (clica, arrasta, solta para fechar)</span>
+    <div class="ssep"></div>
+    <button class="s-btn" onclick="cdRedo()">Repetir</button>
+    <button class="s-btn on" onclick="finishCustomDraw()">Concluir</button>
+    <button class="s-btn danger" onclick="cancelCustomDraw()">Cancelar</button>
   </div>
 </div>
 
@@ -870,12 +886,141 @@ function setupCanvas(){
   render();updateHOv();
   if(typeof updateGuides==='function')updateGuides();
 }
-function panelR(){if(panelShape==='oval'||panelShape==='circle')return'50%';if(panelShape==='rounded'||panelShape==='sqr')return'10%';return'3px';}
-function panelClipPath(){switch(panelShape){case 'circle':return'circle(50% at 50% 50%)';case 'oval':return'ellipse(50% 50% at 50% 50%)';case 'rounded':case 'sqr':return'inset(0 round 10%)';default:return'none';}}
+function panelR(){if(panelShape==='oval'||panelShape==='circle')return'50%';if(panelShape==='rounded'||panelShape==='sqr')return'10%';if(panelShape==='custom')return'0';return'3px';}
+function panelClipPath(){
+  switch(panelShape){
+    case 'circle':return'circle(50% at 50% 50%)';
+    case 'oval':return'ellipse(50% 50% at 50% 50%)';
+    case 'rounded':case 'sqr':return'inset(0 round 10%)';
+    case 'custom':
+      if(!customPanelPath||customPanelPath.length<3)return'none';
+      return'polygon('+customPanelPath.map(p=>`${(p.x*100).toFixed(2)}% ${(p.y*100).toFixed(2)}%`).join(',')+')';
+    default:return'none';
+  }
+}
 function applyPanelClip(){const c=el('mc');if(c){const p=panelClipPath();c.style.clipPath=p;c.style.webkitClipPath=p;}}
+
+// ═══ FORMATO PERSONALIZADO (desenho à mão) ═════════════════════════════════════
+// Um contorno desenhado com o rato define o corte do painel: guardado como pontos
+// normalizados (0..1) relativos à caixa do canvas, para funcionar em qualquer zoom/
+// tamanho. Aplica-se via clip-path (preview) e via applyPanelMask (export/print) —
+// e pode ser exportado como SVG à escala real em mm para enviar ao fornecedor.
+let customPanelPath=null,cdActive=false,cdDrawing=false,cdRaw=[];
+function pickCustomShape(btn){
+  document.querySelectorAll('.s-btn2').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
+  if(customPanelPath&&customPanelPath.length>=3){
+    saveUndo();panelShape='custom';el('cwrap').style.borderRadius=panelR();
+    el('customShapeRow').style.display='flex';enforceSquareIfNeeded();setupCanvas();applyPanelClip();
+  }else startCustomDraw();
+}
+function cdResizeCv(){
+  const cv=el('cdCv'),wrap=el('cwrap');
+  cv.width=wrap.clientWidth;cv.height=wrap.clientHeight;
+}
+function cdPointFromEvent(e){
+  const wrap=el('cwrap');const r=wrap.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;
+  if(x<0||x>1||y<0||y>1)return null;
+  return{x,y};
+}
+function cdDrawPreview(){
+  const cv=el('cdCv');const cx=cv.getContext('2d');
+  cx.clearRect(0,0,cv.width,cv.height);
+  if(cdRaw.length<2)return;
+  cx.beginPath();
+  cdRaw.forEach((p,i)=>{const x=p.x*cv.width,y=p.y*cv.height;if(i===0)cx.moveTo(x,y);else cx.lineTo(x,y);});
+  cx.strokeStyle='#c9703d';cx.lineWidth=2;cx.setLineDash([]);cx.stroke();
+  if(!cdDrawing&&cdRaw.length>=3){cx.closePath();cx.fillStyle='rgba(201,112,61,.18)';cx.fill();cx.strokeStyle='#c9703d';cx.lineWidth=1.5;cx.setLineDash([4,3]);cx.stroke();cx.setLineDash([]);}
+}
+function cdDown(e){
+  if(!cdActive)return;cdDrawing=true;cdRaw=[];
+  const p=cdPointFromEvent(e);if(p)cdRaw.push(p);
+  e.preventDefault();
+}
+function cdMove(e){
+  if(!cdActive||!cdDrawing)return;
+  const p=cdPointFromEvent(e);if(!p)return;
+  const last=cdRaw[cdRaw.length-1];
+  if(last&&Math.hypot(p.x-last.x,p.y-last.y)<0.004)return; // reduz pontos redundantes
+  cdRaw.push(p);cdDrawPreview();
+}
+function cdUp(){
+  if(!cdActive||!cdDrawing)return;cdDrawing=false;cdDrawPreview();
+}
+function startCustomDraw(){
+  cdActive=true;cdDrawing=false;cdRaw=[];
+  el('cdBar').style.display='flex';
+  const cv=el('cdCv');cv.style.display='block';cdResizeCv();
+  cv.onpointerdown=cdDown;cv.onpointermove=cdMove;window.addEventListener('pointerup',cdUp);
+  const cx=cv.getContext('2d');cx.clearRect(0,0,cv.width,cv.height);
+}
+function cdRedo(){cdRaw=[];cdDrawing=false;cdDrawPreview();}
+function cdStop(){
+  cdActive=false;cdDrawing=false;
+  el('cdBar').style.display='none';const cv=el('cdCv');cv.style.display='none';
+  cv.onpointerdown=null;cv.onpointermove=null;window.removeEventListener('pointerup',cdUp);
+}
+function finishCustomDraw(){
+  if(cdRaw.length<3){alert('Desenha um contorno fechado (pelo menos 3 pontos) antes de concluir.');return;}
+  saveUndo();
+  // simplifica o traço (reduz nº de pontos mantendo a forma) para o clip-path e a exportação
+  // não ficarem sobrecarregados de pontos quase coincidentes de um traço de rato tremido
+  const simplified=cdSimplify(cdRaw,0.004);
+  customPanelPath=simplified.length>=3?simplified:cdRaw;
+  panelShape='custom';
+  cdStop();
+  document.querySelectorAll('.s-btn2').forEach(b=>b.classList.remove('on'));
+  el('customShapeBtn').classList.add('on');
+  el('customShapeRow').style.display='flex';
+  el('cwrap').style.borderRadius=panelR();
+  enforceSquareIfNeeded();setupCanvas();applyPanelClip();
+}
+function cancelCustomDraw(){
+  cdStop();
+  if(!(customPanelPath&&customPanelPath.length>=3)){
+    document.querySelectorAll('.s-btn2').forEach(b=>b.classList.remove('on'));
+    document.querySelector('.s-btn2[data-s="rect"]').classList.add('on');
+    panelShape='rect';el('cwrap').style.borderRadius=panelR();setupCanvas();applyPanelClip();
+  }
+}
+// Douglas-Peucker simplificado — remove pontos que não alteram visivelmente a forma
+function cdSimplify(pts,eps){
+  if(pts.length<=2)return pts;
+  const sqDist=(p,a,b)=>{
+    let x=a.x,y=a.y,dx=b.x-x,dy=b.y-y;
+    if(dx!==0||dy!==0){const t=((p.x-x)*dx+(p.y-y)*dy)/(dx*dx+dy*dy);if(t>1){x=b.x;y=b.y;}else if(t>0){x+=dx*t;y+=dy*t;}}
+    dx=p.x-x;dy=p.y-y;return dx*dx+dy*dy;
+  };
+  const simplifyRec=(points,epsSq)=>{
+    let maxD=0,idx=0;
+    for(let i=1;i<points.length-1;i++){const d=sqDist(points[i],points[0],points[points.length-1]);if(d>maxD){maxD=d;idx=i;}}
+    if(maxD>epsSq){
+      const left=simplifyRec(points.slice(0,idx+1),epsSq),right=simplifyRec(points.slice(idx),epsSq);
+      return left.slice(0,-1).concat(right);
+    }
+    return[points[0],points[points.length-1]];
+  };
+  return simplifyRec(pts,eps*eps);
+}
+function exportCustomShape(){
+  if(!customPanelPath||customPanelPath.length<3){alert('Ainda não há um formato personalizado desenhado.');return;}
+  const pathD=customPanelPath.map((p,i)=>`${i===0?'M':'L'}${(p.x*W).toFixed(2)},${(p.y*H).toFixed(2)}`).join(' ')+' Z';
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}mm" height="${H}mm" viewBox="0 0 ${W} ${H}">
+  <rect x="0" y="0" width="${W}" height="${H}" fill="none" stroke="#cccccc" stroke-width="0.3" stroke-dasharray="2,2"/>
+  <path d="${pathD}" fill="none" stroke="#ff0000" stroke-width="0.3"/>
+  <text x="2" y="6" font-size="4" fill="#999999">${W}mm × ${H}mm — linha de corte a vermelho</text>
+</svg>`;
+  const blob=new Blob([svg],{type:'image/svg+xml'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`auron-corte-personalizado-${W}x${H}mm.svg`;a.click();
+  URL.revokeObjectURL(url);
+}
 function enforceSquareIfNeeded(){if(['circle','sq','sqr'].includes(panelShape)&&W!==H){const s=Math.min(W,H);W=s;H=s;}}
 function applySize(){const[w,h]=el('selSz').value.split(',').map(Number);W=w;H=h;enforceSquareIfNeeded();setupCanvas();applyPanelClip();}
-function setShape(btn){document.querySelectorAll('.s-btn2').forEach(b=>b.classList.remove('on'));btn.classList.add('on');panelShape=btn.dataset.s;enforceSquareIfNeeded();el('cwrap').style.borderRadius=panelR();setupCanvas();applyPanelClip();}
+// troca W↔H do formato atual (vertical ↔ horizontal) sem depender de haver uma opção
+// "Horiz" própria no select — funciona para qualquer tamanho, incluindo os personalizados
+function rotatePanel(){const w=W;W=H;H=w;enforceSquareIfNeeded();setupCanvas();applyPanelClip();}
+function setShape(btn){document.querySelectorAll('.s-btn2').forEach(b=>b.classList.remove('on'));btn.classList.add('on');panelShape=btn.dataset.s;el('customShapeRow').style.display='none';enforceSquareIfNeeded();el('cwrap').style.borderRadius=panelR();setupCanvas();applyPanelClip();}
 function zoomStep(d){ZOOM=Math.max(.2,Math.min(4,ZOOM+(d>0?.2:-.2)));setupCanvas();}
 function zoomFit(){ZOOM=1;setupCanvas();}
 
@@ -1053,7 +1198,16 @@ function drawBlob(oc,L,cw,ch){
     tc.fillStyle=L.colors[L.colors.length-1]||L.colors[0]||'#ffffff';tc.fill();
   } else if(L.ringsMode){
     const n=Math.max(2,L.ringsCount||5);
-    const softPx=Math.max(.5,(L.ringsSoft||6)*Math.min(cw,ch)/600*s);
+    // ringsSoft=0 → 0px de desfoque real (antes havia um mínimo de .5px forçado, o que
+    // impedia bandas 100% nítidas mesmo a "Suavid." zero — importante quando se quer
+    // reproduzir com fidelidade uma cor amostrada de uma imagem de referência).
+    const softPx=(L.ringsSoft||0)>0?Math.max(.5,(L.ringsSoft||6)*Math.min(cw,ch)/600*s):0;
+    // "fidelidade": bandHardness alto sobe o tecto de opacidade de .85 para 1.0 e remove
+    // o esbatimento radial (1-t*.2) que antes impedia qualquer banda de ficar 100% opaca —
+    // com bandHardness=100, core=100 e Suavid.=0, a cor de cada anel fica pixel-a-pixel
+    // igual à cor definida no stop (essencial para trabalho a partir de amostras/conta-gotas).
+    const fid=(L.bandHardness||0)/100;
+    const opCap=.85+fid*.15;
     // buffers reutilizados entre anéis (evita alocar 2 canvas grandes por anel)
     const rC=document.createElement('canvas');rC.width=tS;rC.height=tS;const rc=rC.getContext('2d');
     const bC=document.createElement('canvas');bC.width=tS;bC.height=tS;const bcx=bC.getContext('2d');
@@ -1064,8 +1218,8 @@ function drawBlob(oc,L,cw,ch){
       rc.clearRect(0,0,tS,tS);
       rc.save();rc.translate(hc,hc);rc.rotate(L.rotate*Math.PI/180);rc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       rc.scale(ringR*sN*ax,ringR*sN*ay);drawSP(rc,pts);rc.restore();rc.fillStyle=`rgb(${cl(r)},${cl(g)},${cl(b)})`;rc.fill();
-      bcx.clearRect(0,0,tS,tS);bcx.filter=`blur(${softPx}px)`;bcx.drawImage(rC,0,0);bcx.filter='none';
-      tc.globalAlpha=(L.core/100)*.85*(1-t*.2);tc.drawImage(bC,0,0);
+      if(softPx>0){bcx.clearRect(0,0,tS,tS);bcx.filter=`blur(${softPx}px)`;bcx.drawImage(rC,0,0);bcx.filter='none';tc.globalAlpha=(L.core/100)*opCap*(1-t*.2*(1-fid));tc.drawImage(bC,0,0);}
+      else{tc.globalAlpha=(L.core/100)*opCap*(1-t*.2*(1-fid));tc.drawImage(rC,0,0);}
     }
     tc.globalAlpha=1;
   } else {
@@ -3596,7 +3750,7 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
 // serializador do projeto — partilhado entre Guardar manual e o AUTOSAVE
 // (script no fim do ficheiro); mudanças ao formato ficam num sítio só
 function buildProjectData(){
-  return {version:11,W,H,panelShape,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
+  return {version:11,W,H,panelShape,customPanelPath,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
     global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
     layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,displaceTargets:[...L.displaceTargets]}))};
 }
@@ -3609,7 +3763,9 @@ async function saveProject(){
 // aplica um objeto de projeto ao estado da app — partilhado entre abrir
 // ficheiro (loadProject) e recuperar autosave (asRecover)
 function loadProjectData(d){
-  W=d.W||297;H=d.H||420;panelShape=d.panelShape||'rect';themes=d.themes||[];ZOOM=d.ZOOM||1;
+  W=d.W||297;H=d.H||420;panelShape=d.panelShape||'rect';customPanelPath=d.customPanelPath||null;themes=d.themes||[];ZOOM=d.ZOOM||1;
+  if(el('customShapeRow'))el('customShapeRow').style.display=(panelShape==='custom')?'flex':'none';
+  document.querySelectorAll('.s-btn2').forEach(b=>b.classList.toggle('on',b.dataset.s===panelShape));
   BLEED=d.bleed??3;SAFE=d.safe??5;CURRENT_PRODUCT=d.product||null;
   if(el('bleedMm'))el('bleedMm').value=BLEED;if(el('safeMm'))el('safeMm').value=SAFE;
   if(d.global)Object.entries(d.global).forEach(([k,v])=>{
@@ -3645,6 +3801,11 @@ function applyPanelMask(c,pw,ph){
   if(panelShape==='circle'){const r=Math.min(pw,ph)/2;mc.beginPath();mc.arc(pw/2,ph/2,r,0,Math.PI*2);mc.fill();}
   else if(panelShape==='oval'){mc.beginPath();mc.ellipse(pw/2,ph/2,pw/2,ph/2,0,0,Math.PI*2);mc.fill();}
   else if(panelShape==='rounded'||panelShape==='sqr'){const r=Math.min(pw,ph)*.1;if(mc.roundRect){mc.beginPath();mc.roundRect(0,0,pw,ph,r);mc.fill();}else mc.fillRect(0,0,pw,ph);}
+  else if(panelShape==='custom'&&customPanelPath&&customPanelPath.length>=3){
+    mc.beginPath();
+    customPanelPath.forEach((p,i)=>{const x=p.x*pw,y=p.y*ph;if(i===0)mc.moveTo(x,y);else mc.lineTo(x,y);});
+    mc.closePath();mc.fill();
+  }
   else return;
   c.save();c.globalCompositeOperation='destination-in';c.drawImage(m,0,0);c.restore();
 }
