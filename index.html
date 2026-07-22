@@ -819,6 +819,10 @@ function mkLayer(type,over){
     // image adjustments (aplicáveis a qualquer camada, especialmente image)
     imgBrightness:100, imgContrast:100, imgSaturation:100,
     imgHueRotate:0, imgInvert:0, imgThreshold:0, imgDesaturate:false,
+    // transparência derivada da luminosidade da própria foto — para converter fotos (fatias de
+    // fruta, folhas, etc.) num ficheiro pronto a imprimir em acrílico translúcido: zonas claras
+    // (onde a luz atravessa no original) ficam translúcidas; zonas escuras ficam opacas (mais tinta).
+    imgAlphaLuma:0, imgAlphaInvert:false,
     // per-layer fx
     fxMotionBlur:0, fxMotionAngle:0,     // motion blur direcional
     fxHalftone:0, fxHalftoneAngle:90,    // halftone
@@ -1272,6 +1276,22 @@ function applyImageAdjustments(oc,L,cw,ch){
     // threshold (converte para preto/branco puro — silhoueta)
     if(thr>0){const l3=(r*.299+g*.587+b*.114);const v=l3>(thr/100)?1:0;r=g=b=v;}
     d[i]=cl(r*255);d[i+1]=cl(g*255);d[i+2]=cl(b*255);
+  }
+  oc.putImageData(id,0,0);
+}
+// TRANSPARÊNCIA POR LUMINOSIDADE — converte uma foto normal (fatia de fruta, folha, etc.)
+// num ficheiro pronto para acrílico retroiluminado: por defeito, zonas CLARAS do original
+// (onde a luz atravessava) ficam TRANSLÚCIDAS; zonas escuras ficam OPACAS (mais tinta).
+// Corre DEPOIS de applyImageAdjustments, por isso Brilho/Contraste calibram a resposta antes.
+function applyImageAlphaFromLuma(oc,L,cw,ch){
+  const amt=(L.imgAlphaLuma||0)/100; if(amt<=0)return;
+  const inv=!!L.imgAlphaInvert;
+  const id=oc.getImageData(0,0,cw,ch);const d=id.data;
+  for(let i=0;i<d.length;i+=4){
+    const a0=d[i+3];if(a0===0)continue;
+    const lum=(d[i]*.299+d[i+1]*.587+d[i+2]*.114)/255;
+    const targetFrac=inv?lum:(1-lum);
+    d[i+3]=a0*(1-amt)+(targetFrac*255)*amt;
   }
   oc.putImageData(id,0,0);
 }
@@ -1799,6 +1819,7 @@ function drawLayerToCanvas(L,cw,ch){
   }
   // ── FX PIPELINE (image adjustments + effects) ──
   applyImageAdjustments(oc,L,cw,ch);
+  applyImageAlphaFromLuma(oc,L,cw,ch);
   applyMotionBlur(oc,L,cw,ch);
   applyGlitch(oc,L,cw,ch);
   applyChroma(oc,L,cw,ch);
@@ -2693,6 +2714,11 @@ function buildControls(L){
     ${sl(id,`iinv${id}`,'imgInvert',id,0,100,L.imgInvert||0,'Inverter','%')}
     ${sl(id,`ithr${id}`,'imgThreshold',id,0,100,L.imgThreshold||0,'Threshold','%')}
     ${toggle(id,'imgDesaturate',L.imgDesaturate||false,'Desaturar (B&W)')}
+    <div class="dv"></div>
+    <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Transparência para acrílico</div>
+    ${sl(id,`ial${id}`,'imgAlphaLuma',id,0,100,L.imgAlphaLuma||0,'Transp. p/ luminosidade')}
+    ${toggle(id,'imgAlphaInvert',L.imgAlphaInvert||false,'Inverter (escuro=translúcido)')}
+    <div class="bhi" style="padding-left:0">Converte a foto num ficheiro pronto para acrílico retroiluminado: por defeito, zonas CLARAS do original (onde a luz atravessava, ex. polpa de uma fatia de fruta) ficam TRANSLÚCIDAS; zonas escuras (nervuras/casca) ficam OPACAS. "Inverter" troca o sentido. Ajusta Brilho/Contraste acima primeiro para calibrar a resposta antes de subir este valor.</div>
     <div class="dv"></div>
     <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Efeitos</div>
     ${sl(id,`fmb${id}`,'fxMotionBlur',id,0,120,L.fxMotionBlur||0,'Motion blur')}
