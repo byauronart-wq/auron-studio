@@ -748,9 +748,22 @@ function drawSP(c,pts){c.beginPath();pts.forEach((p,i)=>{if(i===0)c.moveTo(p.x,p
 // isto, assume espaçamento uniforme (comportamento antigo, ficheiros/camadas sem
 // L.colorPos definido). Não precisa de vir ordenado — arrastar um stop para lá de
 // outro só troca a ordem visual, nunca parte a interpolação.
-function interpColor(colors,t,posArr){
+// "afia" a fração de mistura cf (0..1) entre duas cores vizinhas: hardness=0 devolve cf
+// tal e qual (comportamento antigo, inalterado); hardness>0 aproxima-a de um degrau via
+// sigmoide centrada em 0.5 (extremos continuam exatos em 0/1) — cada cor fica "sólida" na
+// maior parte da sua zona, com a mistura confinada a uma faixa fina no meio (tipo bandas
+// de mineral/ágata) em vez de se espalhar por todo o intervalo entre stops.
+function sharpenT(cf,hardness){
+  if(!hardness||hardness<=0) return cf;
+  const k=1+(Math.max(0,Math.min(100,hardness))/100)*30;
+  const s=x=>1/(1+Math.exp(-k*(x-0.5)));
+  const s0=s(0),s1=s(1);
+  return (s(cf)-s0)/(s1-s0);
+}
+function interpColor(colors,t,posArr,hardness){
   if(!posArr||posArr.length!==colors.length){
-    const idx=t*(colors.length-1),ci=Math.floor(idx),cn=Math.min(ci+1,colors.length-1),cf=idx-ci;
+    const idx=t*(colors.length-1),ci=Math.floor(idx),cn=Math.min(ci+1,colors.length-1);
+    const cf=sharpenT(idx-ci,hardness);
     const a=hexRGB(colors[ci]),b=hexRGB(colors[cn]);
     return[lerp(a[0],b[0],cf),lerp(a[1],b[1],cf),lerp(a[2],b[2],cf)];
   }
@@ -760,7 +773,8 @@ function interpColor(colors,t,posArr){
   if(t<=sp[0])return hexRGB(sc[0]);
   if(t>=sp[n-1])return hexRGB(sc[n-1]);
   let i=0;while(i<n-2&&sp[i+1]<t)i++;
-  const span=Math.max(1e-6,sp[i+1]-sp[i]),cf=(t-sp[i])/span;
+  const span=Math.max(1e-6,sp[i+1]-sp[i]);
+  const cf=sharpenT((t-sp[i])/span,hardness);
   const a=hexRGB(sc[i]),b=hexRGB(sc[i+1]);
   return[lerp(a[0],b[0],cf),lerp(a[1],b[1],cf),lerp(a[2],b[2],cf)];
 }
@@ -789,6 +803,7 @@ function mkLayer(type,over){
     core:60,blur:0,noise:0,vignette:0,ringWidth:14,
     fshape:'circle',scaleX:100,scaleY:100,rotate:0,skewX:0,skewY:0,
     ringsMode:false,ringsCount:5,ringsSoft:6,solidFill:false,
+    bandHardness:0, // 0=interpolação suave normal · 100=faixas quase sólidas c/ transição fina (tipo ágata/mineral)
     warpData:null,meshPts:null,imageSrc:null,
     causticScale:40,causticComplexity:4,causticContrast:70,causticFlow:0,causticColor:'#ffffff',causticTurbulence:0,
     gridSize:20,gridThickness:1,gridType:'cross',gridColor:'#ffffff',gridAngle:0,
@@ -1036,7 +1051,7 @@ function drawBlob(oc,L,cw,ch){
     const rf=stopFrac(L);
     for(let i=n;i>=0;i--){
       const t=i/n;const ringR=R*(.08+.92*t);if(ringR<1)continue;
-      const ct=invert?t:1-t;const[r,g,b]=interpColor(L.colors,ct,rf);
+      const ct=invert?t:1-t;const[r,g,b]=interpColor(L.colors,ct,rf,L.bandHardness);
       rc.clearRect(0,0,tS,tS);
       rc.save();rc.translate(hc,hc);rc.rotate(L.rotate*Math.PI/180);rc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       rc.scale(ringR*sN*ax,ringR*sN*ay);drawSP(rc,pts);rc.restore();rc.fillStyle=`rgb(${cl(r)},${cl(g)},${cl(b)})`;rc.fill();
@@ -1051,7 +1066,7 @@ function drawBlob(oc,L,cw,ch){
       const tr=pass/P;const ct=invert?tr:1-tr;
       tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
       const sc=R*tr*sN;tc.scale(sc*ax,sc*ay);drawSP(tc,pts);
-      const[r,g,b]=interpColor(L.colors,ct,pf);
+      const[r,g,b]=interpColor(L.colors,ct,pf,L.bandHardness);
       const cA=(L.core/100)*.92;
       const a=pass===1?cA:cA*(1-(pass-1)/(P-1)*.72);
       tc.fillStyle=`rgba(${cl(r)},${cl(g)},${cl(b)},${a/P*2.8})`;tc.fill();tc.restore();
@@ -2549,6 +2564,8 @@ function buildControls(L){
       <button class="fsb${L.ringsMode?' on':''}" style="flex:1" onclick="setRM(${id},'rings',this)">Anéis</button>
     </div>
     ${L.ringsMode?sl(id,`rcv${id}`,'ringsCount',id,2,24,L.ringsCount,'Nº anéis')+sl(id,`rsv${id}`,'ringsSoft',id,0,30,L.ringsSoft,'Suavid.'):''}
+    ${!L.solidFill?sl(id,`bhv${id}`,'bandHardness',id,0,100,L.bandHardness||0,'Dureza das bandas'):''}
+    ${!L.solidFill?'<div class="bhi" style="padding-left:0">0 = mistura suave normal · 100 = faixas quase sólidas com transição fina (tipo bandas de mineral/ágata) — útil ao trabalhar a partir de cores amostradas de uma imagem de referência.</div>':''}
     <div class="ir">
       <span class="il il2">Cor pura</span>
       <button class="fsb" onclick="isolateColor(${id})" style="flex:1;font-size:8px" title="Sólido + Normal + 100% — cor única e plana no topo">Isolar cor</button>
