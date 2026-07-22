@@ -823,6 +823,7 @@ function mkLayer(type,over){
     // fruta, folhas, etc.) num ficheiro pronto a imprimir em acrílico translúcido: zonas claras
     // (onde a luz atravessa no original) ficam translúcidas; zonas escuras ficam opacas (mais tinta).
     imgAlphaLuma:0, imgAlphaInvert:false,
+    imgMode:'photo', imgTraceSens:50, imgTraceGlow:40, imgTraceIntensity:70, imgTraceUsePalette:true,
     // per-layer fx
     fxMotionBlur:0, fxMotionAngle:0,     // motion blur direcional
     fxHalftone:0, fxHalftoneAngle:90,    // halftone
@@ -1294,6 +1295,62 @@ function applyImageAlphaFromLuma(oc,L,cw,ch){
     d[i+3]=a0*(1-amt)+(targetFrac*255)*amt;
   }
   oc.putImageData(id,0,0);
+}
+
+// TRAÇOS (AURA) — em vez de recortar a foto, extrai a sua ESTRUTURA (arestas/veios,
+// via gradiente de luminância) e redesenha-a como traços coloridos desfocados em glow,
+// usando a paleta da própria camada. O resultado deixa de ser "a foto com buracos" e
+// passa a ler-se como um desenho de aura abstraído a partir da forma da foto.
+function applyImageTrace(oc,L,cw,ch){
+  const w=cw,h=ch;
+  const id=oc.getImageData(0,0,w,h);const d=id.data;
+  const lum=new Float32Array(w*h);
+  for(let i=0,p=0;i<d.length;i+=4,p++)lum[p]=(d[i]*.299+d[i+1]*.587+d[i+2]*.114)/255;
+  const edge=new Float32Array(w*h);let maxE=0;
+  for(let y=1;y<h-1;y++){
+    for(let x=1;x<w-1;x++){
+      const p=y*w+x;
+      const gx=lum[p+1]-lum[p-1];
+      const gy=lum[p+w]-lum[p-w];
+      const e=Math.sqrt(gx*gx+gy*gy);
+      edge[p]=e;if(e>maxE)maxE=e;
+    }
+  }
+  const sens=(L.imgTraceSens!=null?L.imgTraceSens:50)/100;
+  const usePalette=L.imgTraceUsePalette!==false;
+  const cols=(L.colors&&L.colors.length)?L.colors:['#8fd3ff','#ffffff'];
+  const pf=stopFrac(L);
+  const traceC=document.createElement('canvas');traceC.width=w;traceC.height=h;
+  const tctx=traceC.getContext('2d');const tid=tctx.createImageData(w,h);const td=tid.data;
+  for(let p=0;p<edge.length;p++){
+    let v=maxE>0?edge[p]/maxE:0;
+    v=(v-(1-sens)*0.5)/(sens*0.9+0.05);
+    v=v<0?0:(v>1?1:v);
+    const i4=p*4;
+    if(usePalette){
+      const c=interpColor(cols,v,pf,L.bandHardness);
+      td[i4]=c[0];td[i4+1]=c[1];td[i4+2]=c[2];
+    }else{
+      td[i4]=d[i4];td[i4+1]=d[i4+1];td[i4+2]=d[i4+2];
+    }
+    td[i4+3]=v*255;
+  }
+  tctx.putImageData(tid,0,0);
+  const glowPx=Math.max(0.5,(L.imgTraceGlow!=null?L.imgTraceGlow:40)*Math.min(w,h)/300);
+  const intensity=(L.imgTraceIntensity!=null?L.imgTraceIntensity:70)/100;
+  oc.clearRect(0,0,w,h);
+  const radii=[glowPx*0.4,glowPx,glowPx*2.2];
+  const alphas=[0.85,0.55,0.4];
+  for(let i=0;i<radii.length;i++){
+    const bC=document.createElement('canvas');bC.width=w;bC.height=h;
+    const bcx=bC.getContext('2d');
+    bcx.filter=`blur(${radii[i]}px)`;bcx.drawImage(traceC,0,0);bcx.filter='none';
+    oc.globalCompositeOperation='lighter';oc.globalAlpha=alphas[i]*intensity;
+    oc.drawImage(bC,0,0);
+  }
+  oc.globalCompositeOperation='lighter';oc.globalAlpha=0.5*intensity;
+  oc.drawImage(traceC,0,0);
+  oc.globalAlpha=1;oc.globalCompositeOperation='source-over';
 }
 
 function applyMotionBlur(oc,L,cw,ch){
@@ -1819,7 +1876,8 @@ function drawLayerToCanvas(L,cw,ch){
   }
   // ── FX PIPELINE (image adjustments + effects) ──
   applyImageAdjustments(oc,L,cw,ch);
-  applyImageAlphaFromLuma(oc,L,cw,ch);
+  if(L.type==='image'&&L.imgMode==='trace')applyImageTrace(oc,L,cw,ch);
+  else applyImageAlphaFromLuma(oc,L,cw,ch);
   applyMotionBlur(oc,L,cw,ch);
   applyGlitch(oc,L,cw,ch);
   applyChroma(oc,L,cw,ch);
@@ -2716,9 +2774,22 @@ function buildControls(L){
     ${toggle(id,'imgDesaturate',L.imgDesaturate||false,'Desaturar (B&W)')}
     <div class="dv"></div>
     <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Transparência para acrílico</div>
+    <div class="ir">
+      <span class="il il2">Modo</span>
+      <button class="fsb${L.imgMode!=='trace'?' on':''}" style="flex:1" onclick="setImgMode(${id},'photo',this)">Foto</button>
+      <button class="fsb${L.imgMode==='trace'?' on':''}" style="flex:1" onclick="setImgMode(${id},'trace',this)">Traços (aura)</button>
+    </div>
+    ${L.imgMode!=='trace'?`
     ${sl(id,`ial${id}`,'imgAlphaLuma',id,0,100,L.imgAlphaLuma||0,'Transp. p/ luminosidade')}
     ${toggle(id,'imgAlphaInvert',L.imgAlphaInvert||false,'Inverter (escuro=translúcido)')}
     <div class="bhi" style="padding-left:0">Converte a foto num ficheiro pronto para acrílico retroiluminado: por defeito, zonas CLARAS do original (onde a luz atravessava, ex. polpa de uma fatia de fruta) ficam TRANSLÚCIDAS; zonas escuras (nervuras/casca) ficam OPACAS. "Inverter" troca o sentido. Ajusta Brilho/Contraste acima primeiro para calibrar a resposta antes de subir este valor.</div>
+    `:`
+    ${sl(id,`its${id}`,'imgTraceSens',id,1,100,L.imgTraceSens!=null?L.imgTraceSens:50,'Sensibilidade dos traços')}
+    ${sl(id,`itg${id}`,'imgTraceGlow',id,1,150,L.imgTraceGlow!=null?L.imgTraceGlow:40,'Desfoque (glow)')}
+    ${sl(id,`iti${id}`,'imgTraceIntensity',id,0,150,L.imgTraceIntensity!=null?L.imgTraceIntensity:70,'Intensidade')}
+    ${toggle(id,'imgTraceUsePalette',L.imgTraceUsePalette!==false,'Colorir com a paleta da camada')}
+    <div class="bhi" style="padding-left:0">Extrai a estrutura da foto (arestas/veios) e redesenha-a como traços desfocados em glow, coloridos pela paleta da camada (secção Gradiente/Cores) em vez das cores originais — a foto deixa de aparecer "tal e qual" e passa a ler-se como uma aura abstraída da sua forma. Sobe a Sensibilidade para captar mais detalhe, ou o Desfoque para um resultado mais lavado/etéreo.</div>
+    `}
     <div class="dv"></div>
     <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Efeitos</div>
     ${sl(id,`fmb${id}`,'fxMotionBlur',id,0,120,L.fxMotionBlur||0,'Motion blur')}
@@ -2918,6 +2989,13 @@ function setRM(lid,mode,btn){
   const L=layers.find(l=>l.id===lid);if(!L)return;
   saveUndo();
   L.ringsMode=mode==='rings';L.solidFill=mode==='solid';
+  btn.parentElement.querySelectorAll('.fsb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
+  renderList();render();
+}
+function setImgMode(lid,mode,btn){
+  const L=layers.find(l=>l.id===lid);if(!L)return;
+  saveUndo();
+  L.imgMode=mode;
   btn.parentElement.querySelectorAll('.fsb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
   renderList();render();
 }
