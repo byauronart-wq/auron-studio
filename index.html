@@ -595,6 +595,8 @@ body.replay .ctr{pointer-events:none}
     <div id="hOv"><svg id="hSvg"></svg></div>
     <div id="defOv"><div id="bRing"></div></div>
     <canvas id="cdCv" style="position:absolute;inset:0;display:none;cursor:crosshair;z-index:5"></canvas>
+    <canvas id="mpCv" style="position:absolute;inset:0;display:none;cursor:crosshair;z-index:5"></canvas>
+    <div id="mpCursor" style="position:absolute;display:none;border:1.5px solid #c9703d;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%);z-index:6"></div>
   </div>
   <div id="cdBar" class="sbar" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:20;border-radius:var(--r1);border:1px solid var(--b0);width:auto">
     <span style="font-size:8px;color:var(--m1)">Desenha o contorno do corte com o rato (clica, arrasta, solta para fechar)</span>
@@ -602,6 +604,19 @@ body.replay .ctr{pointer-events:none}
     <button class="s-btn" onclick="cdRedo()">Repetir</button>
     <button class="s-btn on" onclick="finishCustomDraw()">Concluir</button>
     <button class="s-btn danger" onclick="cancelCustomDraw()">Cancelar</button>
+  </div>
+  <div id="mpBar" class="sbar" style="display:none;position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:20;border-radius:var(--r1);border:1px solid var(--b0);width:auto">
+    <button class="s-btn on" id="mpModeErase" onclick="mpSetMode('erase')">Apagar</button>
+    <button class="s-btn" id="mpModeRestore" onclick="mpSetMode('restore')">Restaurar</button>
+    <div class="ssep"></div>
+    <label style="font-size:8px;color:var(--m1)">Tam.<input type="range" id="mpSz" min="2" max="40" value="12" style="margin-left:4px;vertical-align:middle"></label>
+    <label style="font-size:8px;color:var(--m1)">Dureza<input type="range" id="mpHard" min="0" max="100" value="30" style="margin-left:4px;vertical-align:middle"></label>
+    <div class="ssep"></div>
+    <button class="s-btn" onclick="mpFill('restore')">Tudo visível</button>
+    <button class="s-btn" onclick="mpFill('erase')">Tudo invisível</button>
+    <div class="ssep"></div>
+    <button class="s-btn on" onclick="finishMaskPaint()">Concluir</button>
+    <button class="s-btn danger" onclick="cancelMaskPaint()">Cancelar</button>
   </div>
 </div>
 
@@ -2131,7 +2146,9 @@ function drawLayerToCanvas(L,cw,ch){
     const oc2=off.getContext('2d');oc2.clearRect(0,0,cw,ch);oc2.drawImage(blurred,0,0);
   }
   // aplicar máscara de luminosidade se existir
-  if(L._mask&&L._mask.naturalWidth)applyLayerMask(off,L,cw,ch);
+  // L._mask tanto pode ser um <img> carregado (naturalWidth) como um <canvas> vivo da
+  // ferramenta de pintura de máscara (width) — aceitar ambos
+  if(L._mask&&(L._mask.naturalWidth||L._mask.width))applyLayerMask(off,L,cw,ch);
   // isolation: knockout — pinta um matte com a cor escolhida onde a camada tem alpha,
   // depois suaviza a borda do matte com blur para que a transição com as camadas debaixo
   // não seja dura/pixelizada. As camadas debaixo continuam invisíveis no interior do matte.
@@ -2693,8 +2710,104 @@ function loadMask(lid,input){
 }
 function clearMask(lid){
   saveUndo();const L=layers.find(l=>l.id===lid);if(!L)return;
-  L._mask=null;L.maskSrc=null;renderList();render();
+  L._mask=null;L._paintCanvas=null;L.maskSrc=null;renderList();render();
 }
+
+// ═══ PINTAR MÁSCARA À MÃO ═══════════════════════════════════════════════════════
+// Recorta uma parte de uma foto (ex.: só a mão) para lhe dar um tratamento diferente
+// do resto (nítida vs. desfocada por trás — o efeito "mão a tocar no vidro"). Pinta
+// diretamente sobre L._mask (um canvas vivo, resolução fixa independente do zoom) —
+// branco=visível, preto=invisível, tal como uma máscara de camada normal. Reaproveita
+// 100% do sistema de máscara já existente (applyLayerMask, upload de PNG, persistência
+// via maskSrc) — só acrescenta uma forma de a desenhar em vez de a teres de preparar
+// noutro programa.
+let maskPaintActive=false,mpDrawing=false,maskPaintMode='erase',mpLast=null,mpTargetId=null;
+function startMaskPaint(){
+  const L=layers.find(l=>l.id===activeId);if(!L){alert('Seleciona uma camada de imagem primeiro.');return;}
+  saveUndo();
+  mpTargetId=L.id;
+  if(!L._paintCanvas){
+    const asp=H/W,pw=1000,ph=Math.max(1,Math.round(1000*asp));
+    const pc=document.createElement('canvas');pc.width=pw;pc.height=ph;
+    const pctx=pc.getContext('2d');
+    if(L._mask){pctx.drawImage(L._mask,0,0,pw,ph);} // continua a partir da máscara actual (upload ou pintura anterior)
+    else{pctx.fillStyle='#ffffff';pctx.fillRect(0,0,pw,ph);} // por defeito: tudo visível
+    L._paintCanvas=pc;L._mask=pc;
+  }
+  maskPaintActive=true;mpDrawing=false;mpLast=null;
+  mpSetMode('erase');
+  el('mpBar').style.display='flex';
+  const cv=el('mpCv');cv.style.display='block';mpResizeCv();
+  cv.onpointerdown=mpDown;cv.onpointermove=mpMove;cv.onpointerleave=()=>{el('mpCursor').style.display='none';};
+  window.addEventListener('pointerup',mpUp);
+  render();
+}
+function mpResizeCv(){const cv=el('mpCv'),wrap=el('cwrap');cv.width=wrap.clientWidth;cv.height=wrap.clientHeight;}
+function mpSetMode(m){
+  maskPaintMode=m;
+  el('mpModeErase').classList.toggle('on',m==='erase');
+  el('mpModeRestore').classList.toggle('on',m==='restore');
+}
+function mpPointFromEvent(e){
+  const wrap=el('cwrap');const r=wrap.getBoundingClientRect();
+  const fx=(e.clientX-r.left)/r.width,fy=(e.clientY-r.top)/r.height;
+  const L=layers.find(l=>l.id===mpTargetId);if(!L||!L._paintCanvas)return null;
+  const pc=L._paintCanvas;
+  el('mpCursor').style.display='block';el('mpCursor').style.left=(e.clientX-r.left)+'px';el('mpCursor').style.top=(e.clientY-r.top)+'px';
+  const szPx=(parseInt(el('mpSz').value)/100)*Math.min(r.width,r.height)*2;
+  el('mpCursor').style.width=szPx+'px';el('mpCursor').style.height=szPx+'px';
+  if(fx<0||fx>1||fy<0||fy>1)return null;
+  return{px:fx*pc.width,py:fy*pc.height};
+}
+function mpStamp(px,py,mode){
+  const L=layers.find(l=>l.id===mpTargetId);if(!L||!L._paintCanvas)return;
+  const pc=L._paintCanvas,pctx=pc.getContext('2d');
+  const sizePct=parseInt(el('mpSz').value)/100,r=Math.max(1,sizePct*pc.width/2);
+  const hardness=parseInt(el('mpHard').value)/100;
+  const g=pctx.createRadialGradient(px,py,r*hardness,px,py,r);
+  const col=mode==='erase'?'0,0,0':'255,255,255';
+  g.addColorStop(0,`rgba(${col},1)`);g.addColorStop(1,`rgba(${col},0)`);
+  // 'darken'/'lighten': cada passagem só empurra para a cor alvo, nunca ultrapassa —
+  // dá para "pintar" gradualmente com o rato sem risco de sobre-expor o centro
+  pctx.globalCompositeOperation=mode==='erase'?'darken':'lighten';
+  pctx.fillStyle=g;pctx.beginPath();pctx.arc(px,py,r,0,Math.PI*2);pctx.fill();
+  pctx.globalCompositeOperation='source-over';
+}
+function mpDown(e){
+  if(!maskPaintActive)return;mpDrawing=true;
+  const p=mpPointFromEvent(e);if(p){mpStamp(p.px,p.py,maskPaintMode);mpLast=p;render();}
+  e.preventDefault();
+}
+function mpMove(e){
+  const p=mpPointFromEvent(e);
+  if(!maskPaintActive||!mpDrawing||!p)return;
+  const last=mpLast||p;
+  const dist=Math.hypot(p.px-last.px,p.py-last.py);
+  const steps=Math.max(1,Math.ceil(dist/4));
+  for(let i=1;i<=steps;i++){const t=i/steps;mpStamp(last.px+(p.px-last.px)*t,last.py+(p.py-last.py)*t,maskPaintMode);}
+  mpLast=p;render();
+}
+function mpUp(){mpDrawing=false;}
+function mpFill(mode){
+  const L=layers.find(l=>l.id===mpTargetId);if(!L||!L._paintCanvas)return;
+  const pc=L._paintCanvas,pctx=pc.getContext('2d');
+  pctx.globalCompositeOperation='source-over';
+  pctx.fillStyle=mode==='erase'?'#000000':'#ffffff';
+  pctx.fillRect(0,0,pc.width,pc.height);
+  render();
+}
+function mpStop(){
+  maskPaintActive=false;mpDrawing=false;
+  el('mpBar').style.display='none';const cv=el('mpCv');cv.style.display='none';
+  cv.onpointerdown=null;cv.onpointermove=null;el('mpCursor').style.display='none';
+  window.removeEventListener('pointerup',mpUp);
+}
+function finishMaskPaint(){
+  const L=layers.find(l=>l.id===mpTargetId);
+  if(L&&L._paintCanvas)L.maskSrc=L._paintCanvas.toDataURL();
+  mpStop();renderList();render();
+}
+function cancelMaskPaint(){mpStop();renderList();render();}
 function updateSelInfo(){
   const n=selectedIds.size;
   const info=el('selInfo');
@@ -3103,9 +3216,10 @@ function buildControls(L){
     ${sl(id,`blv${id}`,'blur',id,0,80,L.blur,'Desfoque geral')}
     <div class="dv"></div>
     <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Máscara</div>
-    <div style="font-size:8px;color:var(--m2);margin-bottom:6px;line-height:1.5">PNG preto/branco — branco=visível, preto=invisível. Ideal para silhouetas.</div>
+    <div style="font-size:8px;color:var(--m2);margin-bottom:6px;line-height:1.5">Branco=visível, preto=invisível. Ideal para recortar uma parte de uma foto (ex. só a mão) para lhe dar tratamento diferente do resto (nítido vs. desfocado).</div>
     <div style="display:flex;gap:4px;margin-bottom:5px">
-      <button class="ib" onclick="el('maskFile${id}').click()" style="flex:2">Carregar máscara</button>
+      <button class="ib" onclick="startMaskPaint()" style="flex:2">✏ Pintar máscara</button>
+      <button class="ib" onclick="el('maskFile${id}').click()" style="flex:2">Carregar PNG</button>
       <button class="ib d" onclick="clearMask(${id})" style="flex:1">Limpar</button>
     </div>
     <input type="file" id="maskFile${id}" accept="image/*" style="display:none" onchange="loadMask(${id},this)">
@@ -3752,7 +3866,7 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
 function buildProjectData(){
   return {version:11,W,H,panelShape,customPanelPath,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
     global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
-    layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,displaceTargets:[...L.displaceTargets]}))};
+    layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,_paintCanvas:undefined,displaceTargets:[...L.displaceTargets]}))};
 }
 async function saveProject(){
   const data=buildProjectData();
@@ -3776,7 +3890,7 @@ function loadProjectData(d){
   });
   // _img/_mask: descartar quaisquer resíduos serializados (ficheiros antigos
   // guardavam "_mask":{} — um objecto vazio truthy que rebentava o 1º render)
-  layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null,_img:null,_mask:null}));
+  layers=d.layers.map(l=>({...l,colors:[...l.colors],displaceTargets:[...(l.displaceTargets||[])],warpData:l.warpData?new Float32Array(l.warpData):null,_img:null,_mask:null,_paintCanvas:null}));
   layers.forEach(L=>{
     if(L.type==='image'&&L.imageSrc){const img=new Image();img.onload=()=>{L._img=img;render();};img.src=L.imageSrc;}
     if(L.maskSrc){const img=new Image();img.onload=()=>{L._mask=img;render();};img.src=L.maskSrc;}
