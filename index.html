@@ -338,6 +338,7 @@ body.replay .ctr{pointer-events:none}
     <button class="tb-btn add" onclick="addLayer('grid')"><svg class="ico" viewBox="0 0 14 14"><line x1="1" y1="5" x2="13" y2="5"/><line x1="1" y1="9" x2="13" y2="9"/><line x1="5" y1="1" x2="5" y2="13"/><line x1="9" y1="1" x2="9" y2="13"/></svg>Grid</button>
     <button class="tb-btn add" onclick="addLayer('vector')"><svg class="ico" viewBox="0 0 14 14"><polyline points="2,10 5,4 8,8 11,3"/><circle cx="2" cy="10" r="1.2" fill="currentColor"/><circle cx="5" cy="4" r="1.2" fill="currentColor"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="11" cy="3" r="1.2" fill="currentColor"/></svg>Vector</button>
     <button class="tb-btn add" onclick="addLayer('mesh')"><svg class="ico" viewBox="0 0 14 14"><path d="M1 9 Q4 3 7 6 Q10 9 13 4"/><path d="M1 6 Q4 11 7 8 Q10 5 13 10" opacity=".55"/></svg>Malha 3D</button>
+    <button class="tb-btn add" onclick="addLayer('crystal')"><svg class="ico" viewBox="0 0 14 14"><polygon points="7,1 12,5 10,13 4,13 2,5"/><polyline points="7,1 7,7 12,5" opacity=".55"/><polyline points="7,7 2,5" opacity=".55"/><polyline points="7,7 10,13" opacity=".55"/><polyline points="7,7 4,13" opacity=".55"/></svg>Cristal</button>
     <button class="tb-btn add" onclick="openGradModal()"><svg class="ico" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5"/><circle cx="7" cy="7" r="3"/><circle cx="7" cy="7" r="1"/></svg>Gradientes</button>
     <button class="tb-btn add" onclick="addLayer('veil')"><svg class="ico" viewBox="0 0 14 14"><ellipse cx="7" cy="7" rx="5" ry="3.5"/><ellipse cx="7" cy="7" rx="5" ry="3.5" opacity=".4" transform="rotate(45 7 7)"/></svg>Véu</button>
     <button class="tb-btn add" onclick="el('imgFile').click()"><svg class="ico" viewBox="0 0 14 14"><rect x="1" y="2" width="12" height="10" rx="1"/><polyline points="1,10 4,6 7,9 10,5 13,8"/><circle cx="10" cy="4.5" r="1.2"/></svg>Imagem</button>
@@ -795,7 +796,7 @@ function invertFrac(f){return f.slice().reverse().map(p=>1-p);}
 // ═══ LAYER FACTORY ════════════════════════════════════════════════════════════
 function mkLayer(type,over){
   return Object.assign({
-    id:uid++,name:{blob:'Foco',ring:'Anel',noise:'Ruído',veil:'Véu',image:'Imagem',caustic:'Cáusticas',grid:'Grid',perlin:'Perlin',vector:'Vector',mesh:'Malha 3D'}[type]||type,
+    id:uid++,name:{blob:'Foco',ring:'Anel',noise:'Ruído',veil:'Véu',image:'Imagem',caustic:'Cáusticas',grid:'Grid',perlin:'Perlin',vector:'Vector',mesh:'Malha 3D',crystal:'Cristal'}[type]||type,
     visible:true,locked:false,collapsed:false,type,
     blend:'source-over',opacity:100,fillOpacity:100,
     colors:['#ffffff'],gradDir:'in-out',gradAngle:0,
@@ -850,6 +851,9 @@ function mkLayer(type,over){
     meshForm:'well', meshDensity:26, meshLineWidth:1.2,
     meshRotX:62, meshRotY:0, meshRotZ:0, meshPersp:35,
     meshColorMode:'depth', meshLineColor:'#9fe8ff', meshGlow:30,
+    // cristal — facetas tipo gema (triangulação em grelha com jitter), cor por posição
+    // radial (paleta da camada) + variação de brilho por faceta + brilhos de "plano de clivagem"
+    crystalFacets:14, crystalSeed:1, crystalJitter:35, crystalEdges:40, crystalHighlight:30,
   },over);
 }
 
@@ -1113,6 +1117,80 @@ function drawRing(oc,L,cw,ch){
   const bf=document.createElement('canvas');bf.width=tS;bf.height=tS;bf.getContext('2d').filter=`blur(${blurPx}px)`;bf.getContext('2d').drawImage(rf,0,0);
   oc.imageSmoothingEnabled=true;oc.imageSmoothingQuality='high';
   oc.drawImage(bf,cx-tSL/2,cy-tSL/2,tSL,tSL);
+}
+
+// ═══ DRAW CRYSTAL ═══════════════════════════════════════════════════════════════
+// Facetas tipo gema: uma grelha regular com pontos "jitterados" (deslocados por um RNG
+// seeded, para o resultado ser estável entre renders) é dividida em triângulos — cada
+// triângulo é uma faceta. A cor de cada faceta vem da paleta da camada em função da sua
+// distância ao centro (mesma lógica radial do Foco), com uma pequena variação de brilho
+// aleatória por faceta (simula reflectância diferente por ângulo) e, nalgumas facetas, um
+// brilho sobreposto ("plano de clivagem") para o efeito de gema a brilhar. A silhueta final
+// é recortada pela forma escolhida (Forma), tal como no Foco/Anel.
+function drawCrystal(oc,L,cw,ch){
+  const cx=(L.posX/100)*cw,cy=(L.posY/100)*ch;
+  const baseR=Math.min(cw,ch)*.5*(Math.max(L.sizeX,L.sizeY)/100);
+  const ax=(L.sizeX/Math.max(L.sizeX,L.sizeY))*(L.scaleX/100);
+  const ay=(L.sizeY/Math.max(L.sizeX,L.sizeY))*(L.scaleY/100);
+  const tSL=Math.ceil(baseR*3.6);if(tSL<2)return;
+  const MAXT=8192,s=Math.min(1,MAXT/tSL),tS=Math.ceil(tSL*s),R=baseR*s;
+  const tmp=document.createElement('canvas');tmp.width=tS;tmp.height=tS;
+  const tc=tmp.getContext('2d');const hc=tS/2;
+  const{pts,sN,ex,ey}=getShapePts(L.fshape,baseR);
+  const msk=document.createElement('canvas');msk.width=tS;msk.height=tS;const mc=msk.getContext('2d');
+  mc.save();mc.translate(hc,hc);mc.rotate(L.rotate*Math.PI/180);mc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
+  mc.scale(R*sN*ax,R*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
+
+  const facets=Math.max(3,Math.min(60,L.crystalFacets||14));
+  const cell=tS/facets;
+  const rng=mkRng(((L.crystalSeed||1)*2654435761)>>>0);
+  const gw=facets+3,gh=facets+3,ox=-cell*1.5,oy=-cell*1.5;
+  const grid=[];
+  for(let gy=0;gy<gh;gy++){
+    const row=[];
+    for(let gx=0;gx<gw;gx++)row.push({x:ox+gx*cell+(rng()-.5)*cell*0.9,y:oy+gy*cell+(rng()-.5)*cell*0.9});
+    grid.push(row);
+  }
+  const tris=[];
+  for(let gy=0;gy<gh-1;gy++)for(let gx=0;gx<gw-1;gx++){
+    const p00=grid[gy][gx],p10=grid[gy][gx+1],p01=grid[gy+1][gx],p11=grid[gy+1][gx+1];
+    if(rng()<0.5){tris.push([p00,p10,p11]);tris.push([p00,p11,p01]);}
+    else{tris.push([p00,p10,p01]);tris.push([p10,p11,p01]);}
+  }
+  const invert=L.gradDir==='out-in';
+  const pf=stopFrac(L);
+  const jitterAmt=(L.crystalJitter!=null?L.crystalJitter:35)/100;
+  const edgeAlpha=(L.crystalEdges!=null?L.crystalEdges:40)/100;
+  const highlightAmt=(L.crystalHighlight!=null?L.crystalHighlight:30)/100;
+  const half=tS/2;
+  tris.forEach(tri=>{
+    const cxT=(tri[0].x+tri[1].x+tri[2].x)/3,cyT=(tri[0].y+tri[1].y+tri[2].y)/3;
+    let d=Math.sqrt((cxT-hc)*(cxT-hc)+(cyT-hc)*(cyT-hc))/half;d=Math.min(1,d);
+    const t=invert?d:1-d;
+    const[r,g,b]=interpColor(L.colors,t,pf,L.bandHardness);
+    const f=1+(rng()-0.5)*2*jitterAmt;
+    const rr=cl(r*f),gg=cl(g*f),bb=cl(b*f);
+    tc.beginPath();tc.moveTo(tri[0].x,tri[0].y);tc.lineTo(tri[1].x,tri[1].y);tc.lineTo(tri[2].x,tri[2].y);tc.closePath();
+    tc.fillStyle=`rgb(${rr},${gg},${bb})`;tc.fill();
+    if(edgeAlpha>0){tc.strokeStyle=`rgba(0,0,0,${edgeAlpha*0.5})`;tc.lineWidth=Math.max(.5,s*0.6);tc.stroke();}
+    if(highlightAmt>0&&rng()<highlightAmt*0.35){
+      tc.save();tc.globalCompositeOperation='lighter';
+      const sc2=0.55;
+      tc.beginPath();
+      tc.moveTo(cxT+(tri[0].x-cxT)*sc2,cyT+(tri[0].y-cyT)*sc2);
+      tc.lineTo(cxT+(tri[1].x-cxT)*sc2,cyT+(tri[1].y-cyT)*sc2);
+      tc.lineTo(cxT+(tri[2].x-cxT)*sc2,cyT+(tri[2].y-cyT)*sc2);
+      tc.closePath();
+      tc.fillStyle=`rgba(255,255,255,${(0.35+rng()*0.35).toFixed(3)})`;
+      tc.fill();tc.restore();
+    }
+  });
+  tc.globalCompositeOperation='destination-in';tc.drawImage(msk,0,0);tc.globalCompositeOperation='source-over';
+
+  const blurEff=Math.max(0,(L.blur||0)*Math.min(cw,ch)/300);
+  oc.imageSmoothingEnabled=true;oc.imageSmoothingQuality='high';
+  if(blurEff>.5){const bf2=document.createElement('canvas');bf2.width=tS;bf2.height=tS;bf2.getContext('2d').filter=`blur(${blurEff*s}px)`;bf2.getContext('2d').drawImage(tmp,0,0);oc.drawImage(bf2,cx-tSL/2,cy-tSL/2,tSL,tSL);}
+  else oc.drawImage(tmp,cx-tSL/2,cy-tSL/2,tSL,tSL);
 }
 
 // ═══ DRAW VEIL ════════════════════════════════════════════════════════════════
@@ -1862,6 +1940,7 @@ function drawLayerToCanvas(L,cw,ch){
     else if(L.type==='grid')drawGrid(oc,L,cw,ch);
     else if(L.type==='mesh')drawMesh(oc,L,cw,ch);
     else if(L.type==='vector')drawVector(oc,L,cw,ch);
+    else if(L.type==='crystal')drawCrystal(oc,L,cw,ch);
     else if(L.type==='noise'){
       const id=oc.createImageData(cw,ch);const d=id.data;
       for(let i=0;i<d.length;i+=4){const v=Math.random()*255*(L.noise/100);d[i]=d[i+1]=d[i+2]=v;d[i+3]=255;}
@@ -2432,8 +2511,9 @@ function addLayer(type){
   if(type==='perlin'){L.blend='multiply';L.opacity=60;L.perlinColor1='#001828';L.perlinColor2='#80e8f8';}
   if(type==='vector'){L.blend='source-over';L.opacity=100;L.vectorStroke='#ffffff';L.vectorStrokeWidth=2;}
   if(type==='mesh'){L.blend='screen';L.opacity=100;L.colors=['#2050a0','#40c0e0','#c0f4ff'];L.sizeX=70;L.sizeY=70;}
+  if(type==='crystal'){L.blend='source-over';L.opacity=100;L.colors=['#0a3a5c','#1fb0c9','#bdf6ff'];L.fshape='circle';}
   // gradiente selecionado no gerador → aplica-se a novas formas com gradiente
-  if(typeof SELECTED_GRAD!=='undefined'&&SELECTED_GRAD&&['blob','ring','veil'].includes(type))L.colors=[...SELECTED_GRAD];
+  if(typeof SELECTED_GRAD!=='undefined'&&SELECTED_GRAD&&['blob','ring','veil','crystal'].includes(type))L.colors=[...SELECTED_GRAD];
   layers.push(L);activeId=L.id;renderList();render();updateHOv();
 }
 function addImageLayer(input){
@@ -2731,6 +2811,53 @@ function buildControls(L){
       `).join('')}
     </div>
     <div style="font-size:8px;color:var(--m2);line-height:1.5">Sombra: borda escura entre camadas · Transp.: vidros coloridos sobrepostos</div>`;
+  }
+
+  if(L.type==='crystal'){
+    const fsOpts=Object.keys(SHAPES).map(s=>`<button class="fsb${L.fshape===s?' on':''}" onclick="setFS(${id},'${s}',this)">${SH_NAMES[s]}</button>`).join('');
+    const gpOpts=GRAD_P.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    return common+`
+    <div class="dv"></div>
+    <div class="ir">
+      <span class="il il2">Dir. cor</span>
+      <button class="fsb${L.gradDir!=='out-in'?' on':''}" style="flex:1" onclick="LP(${id},'gradDir','in-out');renderList();render()">Centro → Borda</button>
+      <button class="fsb${L.gradDir==='out-in'?' on':''}" style="flex:1" onclick="LP(${id},'gradDir','out-in');renderList();render()">Borda → Centro</button>
+    </div>
+    ${sl(id,`blv${id}`,'blur',id,0,100,L.blur,'Desfoque')}
+    <div class="dv"></div>
+    ${sl(id,`sxvv${id}`,'sizeX',id,2,300,L.sizeX,'Tam X')}
+    ${sl(id,`syvv${id}`,'sizeY',id,2,300,L.sizeY,'Tam Y')}
+    ${sl(id,`pxvv${id}`,'posX',id,-30,130,L.posX,'Pos X')}
+    ${sl(id,`pyvv${id}`,'posY',id,-30,130,L.posY,'Pos Y')}
+    ${sl(id,`rtvv${id}`,'rotate',id,0,360,L.rotate,'Rotação','°')}
+    ${sl(id,`scxv${id}`,'scaleX',id,20,300,L.scaleX,'Escala X','%')}
+    ${sl(id,`scyv${id}`,'scaleY',id,20,300,L.scaleY,'Escala Y','%')}
+    ${sl(id,`skxv${id}`,'skewX',id,-60,60,L.skewX,'Skew X')}
+    ${sl(id,`skyv${id}`,'skewY',id,-60,60,L.skewY,'Skew Y')}
+    <div class="dv"></div>
+    <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Facetas</div>
+    ${sl(id,`cfv${id}`,'crystalFacets',id,3,60,L.crystalFacets||14,'Nº facetas')}
+    <div class="ir"><span class="il il2">Seed</span>
+      <input type="range" min="1" max="999" value="${L.crystalSeed||1}" oninput="el('csdV${id}').textContent=this.value;LP(${id},'crystalSeed',+this.value);render()">
+      <span class="iv" id="csdV${id}">${L.crystalSeed||1}</span>
+      <button class="fsb" style="flex:0 0 auto;padding:2px 6px" onclick="LP(${id},'crystalSeed',Math.ceil(Math.random()*999));renderList();render()" title="Nova disposição de facetas">🎲</button>
+    </div>
+    ${sl(id,`cjv${id}`,'crystalJitter',id,0,100,L.crystalJitter!=null?L.crystalJitter:35,'Variação de brilho')}
+    ${sl(id,`cev${id}`,'crystalEdges',id,0,100,L.crystalEdges!=null?L.crystalEdges:40,'Arestas')}
+    ${sl(id,`chv${id}`,'crystalHighlight',id,0,100,L.crystalHighlight!=null?L.crystalHighlight:30,'Brilhos (clivagem)')}
+    <div class="bhi" style="padding-left:0">Facetas geradas a partir de uma grelha "jitterada" (tipo gema low-poly). Seed muda a disposição sem alterar o resto. Variação de brilho simula reflectância diferente por faceta; Brilhos acrescenta glints brancos tipo plano de clivagem nalgumas facetas.</div>
+    <div class="dv"></div>
+    <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Forma</div>
+    <div class="fsh">${fsOpts}</div>
+    <div class="dv"></div>
+    <div style="font-size:7px;letter-spacing:.25em;text-transform:uppercase;color:var(--m1);margin-bottom:5px">Cores</div>
+    <div id="cs${id}" class="cst"></div>
+    <canvas id="gb${id}" class="gb" height="5"></canvas>
+    <div class="ir"><span class="il il2">Preset</span>
+      <select onchange="applyGP(${id},this.value);this.value=''">
+        <option value="">— escolher —</option>${gpOpts}
+      </select>
+    </div>`;
   }
 
   if(L.type==='veil'){
