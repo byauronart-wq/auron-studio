@@ -1197,14 +1197,27 @@ function drawBlob(oc,L,cw,ch){
   const invert=L.gradDir==='out-in';const isLin=L.gradDir==='linear';
 
   if(L.solidFill){
-    // preenchimento sólido — forma completamente plana com cor única, SEMPRE
-    // (independente da direção do gradiente escolhida — "Sólido" não usa gradiente
-    // nenhum; antes disto, "Linear" tinha prioridade sobre "Sólido" no código e por
-    // isso era o único que continuava a mostrar um gradiente neste modo)
-    tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);
-    tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
-    tc.scale(R*sN*ax,R*sN*ay);drawSP(tc,pts);tc.restore();
-    tc.fillStyle=L.colors[L.colors.length-1]||L.colors[0]||'#ffffff';tc.fill();
+    // "Sólido" = gradiente NÍTIDO e opaco (um único gradiente nativo do canvas — linear ou
+    // radial consoante a direção escolhida), em vez do empilhamento de ~40 passagens semi-
+    // transparentes do modo "Suave" (que dá o aspeto desvanecido/glow). Funciona nas 3
+    // direções, tal como o "Suave"; a diferença é só nitidez/opacidade das cores, não a
+    // direção disponível.
+    const msk=document.createElement('canvas');msk.width=tS;msk.height=tS;const mc=msk.getContext('2d');
+    mc.save();mc.translate(hc,hc);mc.rotate(L.rotate*Math.PI/180);mc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
+    mc.scale(R*sN*ax,R*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
+    const pf=stopFrac(L);let g;
+    if(isLin){
+      const ep=getLinearEndpoints(L,tS,tS,hc,hc,shapeHalfExtent(L,R*ax*ex,R*ay*ey));
+      g=tc.createLinearGradient(ep.x0,ep.y0,ep.x1,ep.y1);
+      L.colors.forEach((c,i)=>g.addColorStop(pf[i],c));
+    }else{
+      g=tc.createRadialGradient(hc,hc,0,hc,hc,R*Math.max(ax,ay)*sN*Math.max(ex,ey)||R);
+      const cs=invert?[...L.colors].reverse():L.colors;
+      const rf=invert?invertFrac(pf):pf;
+      cs.forEach((c,i)=>g.addColorStop(rf[i],c));
+    }
+    tc.fillStyle=g;tc.fillRect(0,0,tS,tS);
+    tc.globalCompositeOperation='destination-in';tc.drawImage(msk,0,0);tc.globalCompositeOperation='source-over';
   } else if(isLin){
     const msk=document.createElement('canvas');msk.width=tS;msk.height=tS;const mc=msk.getContext('2d');
     mc.save();mc.translate(hc,hc);mc.rotate(L.rotate*Math.PI/180);mc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
@@ -2966,12 +2979,11 @@ function buildControls(L){
     const gpOpts=GRAD_P.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
     return common+`
     <div class="dv"></div>
-    ${(L.type==='blob'&&L.solidFill)?
-      `<div class="bhi" style="padding-left:0">Modo Sólido = sempre a última cor da lista, plana, sem gradiente — a direção não se aplica aqui. Muda para Suave ou Anéis abaixo para voltar a usar direção/gradiente.</div>`
-      :`<div class="ir"><span class="il il2">Dir. grad.</span><select onchange="LP(${id},'gradDir',this.value);toggleAngRow(${id},this.value);render()">${gdOpts}</select></div>
+    <div class="ir"><span class="il il2">Dir. grad.</span><select onchange="LP(${id},'gradDir',this.value);toggleAngRow(${id},this.value);render()">${gdOpts}</select></div>
     <div class="ir" id="angRow${id}" style="${L.gradDir==='linear'?'':'display:none'}">
       ${sl(id,`angV${id}`,'gradAngle',id,0,360,L.gradAngle||0,'Ângulo','°')}
-    </div>`}
+    </div>
+    ${(L.type==='blob'&&L.solidFill)?'<div class="bhi" style="padding-left:0">Modo Sólido: gradiente nítido e opaco (sem o esbatimento em glow do Suave) — funciona nas 3 direções.</div>':''}
     ${sl(id,`blv${id}`,'blur',id,0,100,L.blur,'Desfoque')}
     ${sl(id,`nv${id}`,'noise',id,0,100,L.noise,'Ruído')}
     ${sl(id,`vgv${id}`,'vignette',id,0,100,L.vignette,'Vinheta')}
@@ -2996,7 +3008,7 @@ function buildControls(L){
     </div>
     ${L.ringsMode?sl(id,`rcv${id}`,'ringsCount',id,2,24,L.ringsCount,'Nº anéis')+sl(id,`rsv${id}`,'ringsSoft',id,0,30,L.ringsSoft,'Suavid.'):''}
     ${!L.solidFill?sl(id,`bhv${id}`,'bandHardness',id,0,100,L.bandHardness||0,'Dureza das bandas'):''}
-    ${!L.solidFill?'<div class="bhi" style="padding-left:0">0 = mistura suave normal · 100 = faixas quase sólidas com transição fina (tipo bandas de mineral/ágata) — útil ao trabalhar a partir de cores amostradas de uma imagem de referência.</div>':''}
+    ${!L.solidFill?'<div class="bhi" style="padding-left:0">0 = mistura suave normal · 100 = faixas quase sólidas com transição fina (tipo bandas de mineral/ágata) — útil ao trabalhar a partir de cores amostradas de uma imagem de referência. Em Anéis, valores altos limitam o nº de zonas de cor visíveis ao nº de cores definidas (não ao Nº Anéis) — para mais anéis distintos, baixa a Dureza ou acrescenta mais cores.</div>':''}
     <div class="ir">
       <span class="il il2">Cor pura</span>
       <button class="fsb" onclick="isolateColor(${id})" style="flex:1;font-size:8px" title="Sólido + Normal + 100% — cor única e plana no topo">Isolar cor</button>
@@ -3406,6 +3418,9 @@ function isolateColor(lid){
   L.solidFill=true;L.ringsMode=false;
   L.fillOpacity=100;
   L.opacity=100;
+  // "Sólido" agora é um gradiente nítido (não plano por si só) — para "Isolar cor" continuar
+  // a dar mesmo uma cor única e plana, colapsa a paleta para 1 só cor (a última definida)
+  L.colors=[L.colors[L.colors.length-1]||L.colors[0]||'#ffffff'];delete L.colorPos;
   renderList();render();
 }
 function toggleAngRow(lid,v){const r=el(`angRow${lid}`);if(r)r.style.display=v==='linear'?'flex':'none';}
