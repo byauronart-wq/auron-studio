@@ -1196,7 +1196,16 @@ function drawBlob(oc,L,cw,ch){
   const{pts,sN,ex,ey}=getShapePts(L.fshape,baseR);
   const invert=L.gradDir==='out-in';const isLin=L.gradDir==='linear';
 
-  if(isLin){
+  if(L.solidFill){
+    // preenchimento sólido — forma completamente plana com cor única, SEMPRE
+    // (independente da direção do gradiente escolhida — "Sólido" não usa gradiente
+    // nenhum; antes disto, "Linear" tinha prioridade sobre "Sólido" no código e por
+    // isso era o único que continuava a mostrar um gradiente neste modo)
+    tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);
+    tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
+    tc.scale(R*sN*ax,R*sN*ay);drawSP(tc,pts);tc.restore();
+    tc.fillStyle=L.colors[L.colors.length-1]||L.colors[0]||'#ffffff';tc.fill();
+  } else if(isLin){
     const msk=document.createElement('canvas');msk.width=tS;msk.height=tS;const mc=msk.getContext('2d');
     mc.save();mc.translate(hc,hc);mc.rotate(L.rotate*Math.PI/180);mc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
     mc.scale(R*sN*ax,R*sN*ay);drawSP(mc,pts);mc.restore();mc.fillStyle='#fff';mc.fill();
@@ -1205,12 +1214,6 @@ function drawBlob(oc,L,cw,ch){
     const lf=stopFrac(L);L.colors.forEach((c,i)=>g.addColorStop(lf[i],c));
     tc.fillStyle=g;tc.fillRect(0,0,tS,tS);
     tc.globalCompositeOperation='destination-in';tc.drawImage(msk,0,0);tc.globalCompositeOperation='source-over';
-  } else if(L.solidFill){
-    // preenchimento sólido — forma completamente plana com cor única
-    tc.save();tc.translate(hc,hc);tc.rotate(L.rotate*Math.PI/180);
-    tc.transform(1,L.skewY/100,L.skewX/100,1,0,0);
-    tc.scale(R*sN*ax,R*sN*ay);drawSP(tc,pts);tc.restore();
-    tc.fillStyle=L.colors[L.colors.length-1]||L.colors[0]||'#ffffff';tc.fill();
   } else if(L.ringsMode){
     const n=Math.max(2,L.ringsCount||5);
     // ringsSoft=0 → 0px de desfoque real (antes havia um mínimo de .5px forçado, o que
@@ -2963,10 +2966,12 @@ function buildControls(L){
     const gpOpts=GRAD_P.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
     return common+`
     <div class="dv"></div>
-    <div class="ir"><span class="il il2">Dir. grad.</span><select onchange="LP(${id},'gradDir',this.value);toggleAngRow(${id},this.value);render()">${gdOpts}</select></div>
+    ${(L.type==='blob'&&L.solidFill)?
+      `<div class="bhi" style="padding-left:0">Modo Sólido = sempre a última cor da lista, plana, sem gradiente — a direção não se aplica aqui. Muda para Suave ou Anéis abaixo para voltar a usar direção/gradiente.</div>`
+      :`<div class="ir"><span class="il il2">Dir. grad.</span><select onchange="LP(${id},'gradDir',this.value);toggleAngRow(${id},this.value);render()">${gdOpts}</select></div>
     <div class="ir" id="angRow${id}" style="${L.gradDir==='linear'?'':'display:none'}">
       ${sl(id,`angV${id}`,'gradAngle',id,0,360,L.gradAngle||0,'Ângulo','°')}
-    </div>
+    </div>`}
     ${sl(id,`blv${id}`,'blur',id,0,100,L.blur,'Desfoque')}
     ${sl(id,`nv${id}`,'noise',id,0,100,L.noise,'Ruído')}
     ${sl(id,`vgv${id}`,'vignette',id,0,100,L.vignette,'Vinheta')}
