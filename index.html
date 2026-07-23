@@ -3623,7 +3623,22 @@ function buildEyeApply(){
 function samplePx(x,y,fromRef){
   let r,g,b;
   if(fromRef){const rc=el('refCv');if(!rc||rc.style.display==='none')return null;const rect=rc.getBoundingClientRect();const ix=Math.round((x-rect.left)/rect.width*rc.width),iy=Math.round((y-rect.top)/rect.height*rc.height);if(ix<0||ix>=rc.width||iy<0||iy>=rc.height)return null;const px=rc.getContext('2d').getImageData(Math.max(0,ix),Math.max(0,iy),1,1).data;r=px[0];g=px[1];b=px[2];}
-  else{const rect=canvas.getBoundingClientRect();const ix=Math.round((x-rect.left)/rect.width*canvas.width),iy=Math.round((y-rect.top)/rect.height*canvas.height);if(ix<0||ix>=canvas.width||iy<0||iy>=canvas.height)return null;const px=ctx.getImageData(Math.max(0,ix),Math.max(0,iy),1,1).data;r=px[0];g=px[1];b=px[2];}
+  else{
+    const rect=canvas.getBoundingClientRect();const ix=Math.round((x-rect.left)/rect.width*canvas.width),iy=Math.round((y-rect.top)/rect.height*canvas.height);
+    if(ix<0||ix>=canvas.width||iy<0||iy>=canvas.height)return null;
+    if(BACKLIT){
+      // o preview "Backlight" aplica um filtro CSS visual (brilho/saturação/contraste) ao
+      // <canvas> SEM alterar os pixels reais — amostrar direto do getImageData devolvia uma
+      // cor bem mais escura/menos viva do que a que se via no ecrã. Replica-se o MESMO filtro
+      // (tem de ficar igual a .cwrap.backlit no CSS) sobre o pixel antes de o ler.
+      const sc=document.createElement('canvas');sc.width=1;sc.height=1;
+      const sctx=sc.getContext('2d');sctx.filter='brightness(1.22) saturate(1.12) contrast(1.04)';
+      sctx.drawImage(canvas,Math.max(0,ix),Math.max(0,iy),1,1,0,0,1,1);
+      const px=sctx.getImageData(0,0,1,1).data;r=px[0];g=px[1];b=px[2];
+    }else{
+      const px=ctx.getImageData(Math.max(0,ix),Math.max(0,iy),1,1).data;r=px[0];g=px[1];b=px[2];
+    }
+  }
   return{r,g,b,hex:rgbHex(r,g,b)};
 }
 function isOverRef(cx,cy){const w=el('refWrap');if(!w)return false;const r=w.getBoundingClientRect();return cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom;}
