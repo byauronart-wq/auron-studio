@@ -582,7 +582,11 @@
       gx2.globalCompositeOperation='multiply'; gx2.globalAlpha=Math.min(1,MK.glass/100);
       gx2.fillStyle='rgba(232,238,236,1)'; gx2.fillRect(0,0,w,h); gx2.globalAlpha=1; // vidro absorve luz, tom neutro-frio
       gx2.globalCompositeOperation='destination-in'; gx2.drawImage(clipV,0,0); gx2.globalCompositeOperation='source-over';
-      ctx2.drawImage(gl,0,0);
+      // Intensidade overlay negativa (<0): reduz também este "ver a parede através do vidro" —
+      // não é só a passagem 3 (opacidade da peça) que deixa a parede transparecer.
+      const ovNeg0=Math.max(0,-(MK.overlayIntensity||0)/100);
+      if(ovNeg0>0){ ctx2.globalAlpha=1-ovNeg0; ctx2.drawImage(gl,0,0); ctx2.globalAlpha=1; }
+      else ctx2.drawImage(gl,0,0);
     }
     // 1.5) AO / bisel — sombra de contacto fina ao longo do REBORDO REAL da peça (já posicionada no frame)
     if(full && hasPanel && MK.contact>0){
@@ -633,10 +637,14 @@
       ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=0.4; ctx2.drawImage(tint,0,0); ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
     }
     // 3) a PEÇA — translucidez deixa ver a parede através da cor (mantendo a cor fiel)
-    const transl=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
-    const ovMix=(MK.overlayIntensity||0)/100;
-    // Intensidade do overlay: reduz a opacidade da passagem normal (até 60% no máximo) para
-    // a parede começar a transparecer através da própria peça, não só à sua volta.
+    const translBase=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
+    // Intensidade do overlay é bidirecional: negativa (<0) empurra para MAIS sólida/opaca —
+    // reduz a translucidez base do acabamento; positiva (>0) empurra para MAIS transparente/
+    // "luz projetada" — reduz a opacidade da passagem normal e soma uma passagem extra em 'screen'.
+    const ovRaw=(MK.overlayIntensity||0)/100;
+    const ovPos=Math.max(0,ovRaw), ovNeg=Math.max(0,-ovRaw);
+    const transl=translBase*(1-ovNeg);
+    const ovMix=ovPos;
     ctx2.globalAlpha=MK.opacity*(1-transl)*(1-ovMix*0.6); ctx2.globalCompositeOperation=MK.blend;
     // Vivacidade: tinta UV sobre vidro pode ficar mais viva que print em papel (reforço opcional)
     if(MK.finish==='acrylic' && MK.vivid>0) ctx2.filter='saturate('+(1+MK.vivid/100*0.30)+') contrast('+(1+MK.vivid/100*0.075)+')';
@@ -1263,7 +1271,7 @@
       MK.beamOn=!!t.beamOn; MK.beam=c01t(t.beam!=null?t.beam:55); MK.beamAngle=(t.beamAngle!=null?t.beamAngle:60); MK.beamPos=c01t(t.beamPos!=null?t.beamPos:50); MK.beamWidth=c01t(t.beamWidth!=null?t.beamWidth:40); MK.beamSoft=c01t(t.beamSoft!=null?t.beamSoft:55); MK.env=c01t(t.env!=null?t.env:60); MK.mirror=c01t(t.mirror!=null?t.mirror:25); MK.ink=c01t(t.ink!=null?t.ink:65);
       MK.vivid=c01t(t.vivid!=null?t.vivid:40); MK.edgeGlow=c01t(t.edgeGlow!=null?t.edgeGlow:50); MK.edgeWidth=c01t(t.edgeWidth!=null?t.edgeWidth:50); MK.contact=c01t(t.contact!=null?t.contact:50); MK.glass=c01t(t.glass!=null?t.glass:50);
       MK.edgeSoft=c01t(t.edgeSoft!=null?t.edgeSoft:22); MK.edgeBorder=c01t(t.edgeBorder!=null?t.edgeBorder:0); MK.edgeBorderW=c01t(t.edgeBorderW!=null?t.edgeBorderW:35); MK.edgeBorderColor=t.edgeBorderColor||'#141821';
-      MK.overlayIntensity=c01t(t.overlayIntensity!=null?t.overlayIntensity:0);
+      MK.overlayIntensity=Math.max(-100,Math.min(100,+(t.overlayIntensity!=null?t.overlayIntensity:0)||0));
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
