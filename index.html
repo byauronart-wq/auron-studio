@@ -4421,6 +4421,8 @@ window.addEventListener('keydown',e=>{
         <option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option>
       </select>
     </div>
+    <div class="mk-row"><span>Intensidade overlay</span><input type="range" id="mkOverlay" min="0" max="100" value="0" oninput="mockSet('overlayIntensity',+this.value)"><span class="mk-v" id="mkOverlayV">0</span></div>
+    <div class="mk-row" style="flex-basis:100%"><span style="color:#6f8a98;font-size:9px;line-height:1.4">0 = peça normal (fiel/opaca) · sobe para deixar a parede e as luzes da divisão transparecerem através da peça, tipo luz projetada — combina com Ambiente/Espelho abaixo (acabamento Acrílico) para mais efeito.</span></div>
     <div class="mk-row"><span>Forma</span>
       <select id="mkMask" onchange="mockSetMask(this.value)">
         <option value="rect">Retângulo</option><option value="square">Quadrado</option><option value="ellipse">Elipse</option><option value="circle">Círculo</option>

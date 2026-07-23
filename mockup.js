@@ -30,6 +30,9 @@
     glass:50,                                                      // vidro: refração + tinta neutra (ver através)
     edgeSoft:22,                                                   // nitidez do corte da forma (0=nítido/vinil, 100=muito suave)
     edgeBorder:0, edgeBorderW:35, edgeBorderColor:'#141821',        // contorno opcional (0=sem contorno, seamless)
+    overlayIntensity:0,   // 0=peça normal (opaca, fiel) · 100=quase pura luz projetada — reduz a opacidade
+                           // da peça e soma-lhe uma passagem extra em 'screen', para a parede/luzes da sala
+                           // aparecerem através dela (o efeito "overlay" que se vê em mockups de referência)
     orient:'v', size:'a3', customW:30, customH:30,  // predefinições de saída (front)
     cw:0, ch:0, nativeW:0, nativeH:0,
     active:false, drag:null, selected:false,
@@ -363,7 +366,7 @@
   }
   // ── UNDO (Ctrl/Cmd+Z, só na aba Mockups) ──────────────────────────────────────
   let _undo=[], _lastSnap=0;
-  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,glassFrost:MK.glassFrost,translucency:MK.translucency,thickness:MK.thickness,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect,reflectAngle:MK.reflectAngle,env:MK.env,mirror:MK.mirror,ink:MK.ink,vivid:MK.vivid,edgeGlow:MK.edgeGlow,edgeWidth:MK.edgeWidth,contact:MK.contact,glass:MK.glass,edgeSoft:MK.edgeSoft,edgeBorder:MK.edgeBorder,edgeBorderW:MK.edgeBorderW,edgeBorderColor:MK.edgeBorderColor}); }
+  function mkSerial(){ return JSON.stringify({x:MK.x,y:MK.y,baseScale:MK.baseScale,scaleMul:MK.scaleMul,rot:MK.rot,opacity:MK.opacity,blend:MK.blend,persp:MK.persp,quad:MK.quad,mask:MK.mask,maskRadius:MK.maskRadius,finish:MK.finish,fillPanel:MK.fillPanel,glassFrost:MK.glassFrost,translucency:MK.translucency,thickness:MK.thickness,spill:MK.spill,shadow:MK.shadow,shadowSize:MK.shadowSize,shadowAngle:MK.shadowAngle,reflect:MK.reflect,reflectAngle:MK.reflectAngle,env:MK.env,mirror:MK.mirror,ink:MK.ink,vivid:MK.vivid,edgeGlow:MK.edgeGlow,edgeWidth:MK.edgeWidth,contact:MK.contact,glass:MK.glass,edgeSoft:MK.edgeSoft,edgeBorder:MK.edgeBorder,edgeBorderW:MK.edgeBorderW,edgeBorderColor:MK.edgeBorderColor,overlayIntensity:MK.overlayIntensity}); }
   function mkSnapshot(force){ if(!MK.design)return; const now=Date.now(); if(!force && now-_lastSnap<600) return; _lastSnap=now; _undo.push(mkSerial()); if(_undo.length>60)_undo.shift(); }
   window.mockUndo=function(){ if(!_undo.length) return; const s=JSON.parse(_undo.pop()); Object.assign(MK,s); if(MK.quad)MK.quad=MK.quad.map(p=>({x:p.x,y:p.y})); buildMasked(); syncAllUI(); MK.selected=true; renderMock(); };
 
@@ -401,6 +404,7 @@
     else if(prop==='scaleP'){ const m=val/100; if(MK.persp){ scaleQuad(m/(MK.scaleMul||1)); } MK.scaleMul=m; $('mkScaleV').textContent=Math.round(val); }
     else if(prop==='rotD'){ const rad=val*Math.PI/180; if(MK.persp){ rotateQuad(rad-MK.rot); } MK.rot=rad; $('mkRotV').textContent=Math.round(val); }
     else if(prop==='blend'){ MK.blend=val; }
+    else if(prop==='overlayIntensity'){ MK.overlayIntensity=+val; $('mkOverlayV').textContent=Math.round(val); }
     renderMock();
   };
   function syncProps(){
@@ -408,6 +412,7 @@
     $('mkScale').value=Math.round(MK.scaleMul*100); $('mkScaleV').textContent=Math.round(MK.scaleMul*100);
     $('mkRot').value=Math.round(MK.rot*180/Math.PI); $('mkRotV').textContent=Math.round(MK.rot*180/Math.PI);
     $('mkBlend').value=MK.blend;
+    if($('mkOverlay')){ $('mkOverlay').value=Math.round(MK.overlayIntensity||0); $('mkOverlayV').textContent=Math.round(MK.overlayIntensity||0); }
     if($('mkPerspBtn')){ $('mkPerspBtn').classList.toggle('on',MK.persp); $('mkPerspBtn').textContent=MK.persp?'Perspetiva: ON':'Perspetiva'; }
   }
 
@@ -629,11 +634,21 @@
     }
     // 3) a PEÇA — translucidez deixa ver a parede através da cor (mantendo a cor fiel)
     const transl=(MK.finish&&MK.finish!=='none'&&!MK.fillPanel)?(MK.translucency||0)/100*0.7:0;
-    ctx2.globalAlpha=MK.opacity*(1-transl); ctx2.globalCompositeOperation=MK.blend;
+    const ovMix=(MK.overlayIntensity||0)/100;
+    // Intensidade do overlay: reduz a opacidade da passagem normal (até 60% no máximo) para
+    // a parede começar a transparecer através da própria peça, não só à sua volta.
+    ctx2.globalAlpha=MK.opacity*(1-transl)*(1-ovMix*0.6); ctx2.globalCompositeOperation=MK.blend;
     // Vivacidade: tinta UV sobre vidro pode ficar mais viva que print em papel (reforço opcional)
     if(MK.finish==='acrylic' && MK.vivid>0) ctx2.filter='saturate('+(1+MK.vivid/100*0.30)+') contrast('+(1+MK.vivid/100*0.075)+')';
     ctx2.drawImage(layer,0,0); ctx2.filter='none';
     ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    // 3.05) passagem extra em 'screen' — soma o brilho da peça sobre a parede/luzes já visíveis
+    // por baixo, dando o efeito de "luz projetada" do overlay em vez de painel opaco colado.
+    if(ovMix>0){
+      ctx2.globalCompositeOperation='screen'; ctx2.globalAlpha=ovMix;
+      ctx2.drawImage(layer,0,0);
+      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    }
     // 3.1) HARMONIZAÇÃO — puxa ligeiramente o matiz da peça para a cor dominante da cena
     //      (composite 'color': só muda matiz/saturação, NUNCA a luminância → não escurece nem lava)
     if(full && MK.scene && MK.finish && MK.finish!=='none'){
@@ -1224,6 +1239,7 @@
       beamOn:MK.beamOn, beam:MK.beam, beamAngle:MK.beamAngle, beamPos:MK.beamPos, beamWidth:MK.beamWidth, beamSoft:MK.beamSoft, env:MK.env, mirror:MK.mirror, ink:MK.ink,
       vivid:MK.vivid, edgeGlow:MK.edgeGlow, edgeWidth:MK.edgeWidth, contact:MK.contact, glass:MK.glass,
       edgeSoft:MK.edgeSoft, edgeBorder:MK.edgeBorder, edgeBorderW:MK.edgeBorderW, edgeBorderColor:MK.edgeBorderColor,
+      overlayIntensity:MK.overlayIntensity,
       thumb:makeThumb() };
     try{ await tplPut(t); renderLib(); }catch(e){ alert('Erro a guardar: '+e.message); }
   };
@@ -1247,6 +1263,7 @@
       MK.beamOn=!!t.beamOn; MK.beam=c01t(t.beam!=null?t.beam:55); MK.beamAngle=(t.beamAngle!=null?t.beamAngle:60); MK.beamPos=c01t(t.beamPos!=null?t.beamPos:50); MK.beamWidth=c01t(t.beamWidth!=null?t.beamWidth:40); MK.beamSoft=c01t(t.beamSoft!=null?t.beamSoft:55); MK.env=c01t(t.env!=null?t.env:60); MK.mirror=c01t(t.mirror!=null?t.mirror:25); MK.ink=c01t(t.ink!=null?t.ink:65);
       MK.vivid=c01t(t.vivid!=null?t.vivid:40); MK.edgeGlow=c01t(t.edgeGlow!=null?t.edgeGlow:50); MK.edgeWidth=c01t(t.edgeWidth!=null?t.edgeWidth:50); MK.contact=c01t(t.contact!=null?t.contact:50); MK.glass=c01t(t.glass!=null?t.glass:50);
       MK.edgeSoft=c01t(t.edgeSoft!=null?t.edgeSoft:22); MK.edgeBorder=c01t(t.edgeBorder!=null?t.edgeBorder:0); MK.edgeBorderW=c01t(t.edgeBorderW!=null?t.edgeBorderW:35); MK.edgeBorderColor=t.edgeBorderColor||'#141821';
+      MK.overlayIntensity=c01t(t.overlayIntensity!=null?t.overlayIntensity:0);
       MK.persp=true; MK.quad=t.quadN.map(p=>({x:p.x*MK.cw, y:p.y*MK.ch})); MK.selected=true;
       if(MK.design) buildMasked();
       // sincronizar UI
@@ -1257,7 +1274,7 @@
       if($('mkFillBtn')){ $('mkFillBtn').classList.toggle('on',MK.fillPanel); $('mkFillBtn').textContent=MK.fillPanel?'Placa: cor da arte':'Preencher placa'; }
       if($('mkSize')){ $('mkSize').value=MK.size; $('mkCustomRow').style.display=(MK.size==='custom')?'':'none'; }
       if($('mkCustomW'))$('mkCustomW').value=MK.customW; if($('mkCustomH'))$('mkCustomH').value=MK.customH;
-      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness'],['mkBeam','beam'],['mkBeamAng','beamAngle'],['mkBeamPos','beamPos'],['mkBeamW','beamWidth'],['mkBeamS','beamSoft'],['mkEnv','env'],['mkMirror','mirror'],['mkInk','ink'],['mkVivid','vivid'],['mkEdgeGlow','edgeGlow'],['mkEdgeWidth','edgeWidth'],['mkContact','contact'],['mkGlass','glass'],['mkEdgeSoft','edgeSoft'],['mkEdgeBorder','edgeBorder'],['mkEdgeBorderW','edgeBorderW']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
+      [['mkSpill','spill'],['mkShadow','shadow'],['mkShSize','shadowSize'],['mkShAng','shadowAngle'],['mkReflect','reflect'],['mkRefAng','reflectAngle'],['mkTransl','translucency'],['mkThick','thickness'],['mkBeam','beam'],['mkBeamAng','beamAngle'],['mkBeamPos','beamPos'],['mkBeamW','beamWidth'],['mkBeamS','beamSoft'],['mkEnv','env'],['mkMirror','mirror'],['mkInk','ink'],['mkVivid','vivid'],['mkEdgeGlow','edgeGlow'],['mkEdgeWidth','edgeWidth'],['mkContact','contact'],['mkGlass','glass'],['mkEdgeSoft','edgeSoft'],['mkEdgeBorder','edgeBorder'],['mkEdgeBorderW','edgeBorderW'],['mkOverlay','overlayIntensity']].forEach(([el2,k])=>{const s=$(el2);if(s){s.value=MK[k];const v=$(el2+'V');if(v)v.textContent=Math.round(MK[k]);}});
       if($('mkEdgeBorderColor'))$('mkEdgeBorderColor').value=MK.edgeBorderColor;
       if($('mkBeamBtn')){ $('mkBeamBtn').classList.toggle('on',MK.beamOn); $('mkBeamBtn').textContent=MK.beamOn?'Luz de janela: ligada':'Luz de janela'; } if($('mkBeamRows'))$('mkBeamRows').style.display=MK.beamOn?'':'none';
       if($('mkFrostBtn')){ $('mkFrostBtn').classList.toggle('on',MK.glassFrost); $('mkFrostBtn').textContent=MK.glassFrost?'Vidro: fosco':'Vidro fosco'; }
