@@ -2308,7 +2308,24 @@ function _renderActual(hq){
   });
 
   // PASS 1: build all offscreens
-  const offs=visible.map(L=>({L,off:drawLayerToCanvas(L,cw,ch)}));
+  // PERFORMANCE: com muitas camadas, redesenhar TODAS do zero em cada frame (inclui as que
+  // nem estás a editar) é o que torna o software lento ao adicionares mais camadas/efeitos —
+  // o custo de render cresce com o nº total de camadas em vez de só com a que estás a mexer.
+  // Correção: na passagem RÁPIDA (interativa, hq=false), reaproveita o bitmap já calculado
+  // da camada activa da última vez para todas as camadas que NÃO és tu a editar agora — a
+  // passagem HQ (200ms depois de parares de mexer) recalcula sempre tudo do zero, por isso
+  // qualquer imprecisão temporária corrige-se sozinha em breve. Nunca se reaproveita a
+  // camada activa, nem uma que sirva de alvo de deslocamento (o alvo é mutado in-place pela
+  // PASS 2 — reutilizar um bitmap já deslocado acumularia o deslocamento a cada frame).
+  const dispTargetIds=new Set();
+  visible.forEach(L=>{if(L.displaceEnabled&&L.displaceTargets&&L.displaceTargets.length)L.displaceTargets.forEach(tid=>dispTargetIds.add(tid));});
+  const cacheKey=cw+'x'+ch;
+  const offs=visible.map(L=>{
+    const canReuse=!hq&&L.id!==activeId&&L._cacheOff&&L._cacheKey===cacheKey&&!dispTargetIds.has(L.id);
+    const off=canReuse?L._cacheOff:drawLayerToCanvas(L,cw,ch);
+    if(!canReuse){L._cacheOff=off;L._cacheKey=cacheKey;}
+    return{L,off};
+  });
 
   // PASS 2: apply displacements
   offs.forEach(item=>{
@@ -3602,7 +3619,7 @@ function renderGradModal(){
 }
 
 // ═══ UNDO / REDO ═════════════════════════════════════════════════════════════
-function serializeState(){return JSON.stringify({layers:layers.map(l=>({...l,warpData:l.warpData?Array.from(l.warpData):null,_img:undefined,displaceTargets:[...l.displaceTargets]})),activeId});}
+function serializeState(){return JSON.stringify({layers:layers.map(l=>({...l,warpData:l.warpData?Array.from(l.warpData):null,_img:undefined,_cacheOff:undefined,_cacheKey:undefined,displaceTargets:[...l.displaceTargets]})),activeId});}
 function saveUndo(){
   clearTimeout(undoT);undoT=setTimeout(()=>{
     const s=serializeState();if(undoStack.length&&undoStack[undoStack.length-1]===s)return;
@@ -3901,7 +3918,7 @@ async function saveBlobAs(blob,defaultName,mime,description,exts,pickerId){
 function buildProjectData(){
   return {version:11,W,H,panelShape,customPanelPath,themes,ZOOM,bleed:BLEED,safe:SAFE,product:CURRENT_PRODUCT,
     global:{bgCol:el('bgCol').value,bgOp:el('bgOp').value,bgTr:el('bgTr').value,gBr:el('gBr').value,gSat:el('gSat').value,gNoise:el('gNoise').value,gVig:el('gVig').value,gCon:el('gCon')?.value??0,gBP:el('gBP')?.value??0,gWP:el('gWP')?.value??255,gVib:el('gVib')?.value??0,gTemp:el('gTemp')?.value??0,gOpac:el('gOpac')?.value??100},
-    layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,_paintCanvas:undefined,displaceTargets:[...L.displaceTargets]}))};
+    layers:layers.map(L=>({...L,warpData:L.warpData?Array.from(L.warpData):null,_img:undefined,_mask:undefined,_paintCanvas:undefined,_cacheOff:undefined,_cacheKey:undefined,displaceTargets:[...L.displaceTargets]}))};
 }
 async function saveProject(){
   const data=buildProjectData();
