@@ -645,11 +645,33 @@
     const ovPos=Math.max(0,ovRaw), ovNeg=Math.max(0,-ovRaw);
     const transl=translBase*(1-ovNeg);
     const ovMix=ovPos;
-    ctx2.globalAlpha=MK.opacity*(1-transl)*(1-ovMix*0.6); ctx2.globalCompositeOperation=MK.blend;
-    // Vivacidade: tinta UV sobre vidro pode ficar mais viva que print em papel (reforço opcional)
-    if(MK.finish==='acrylic' && MK.vivid>0) ctx2.filter='saturate('+(1+MK.vivid/100*0.30)+') contrast('+(1+MK.vivid/100*0.075)+')';
-    ctx2.drawImage(layer,0,0); ctx2.filter='none';
-    ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    const pieceAlpha=MK.opacity*(1-transl)*(1-ovMix*0.6);
+    const vividFilter=(MK.finish==='acrylic' && MK.vivid>0)?('saturate('+(1+MK.vivid/100*0.30)+') contrast('+(1+MK.vivid/100*0.075)+')'):'';
+    if(ovNeg>0 && MK.blend!=='source-over'){
+      // Intensidade overlay negativa também tem de neutralizar uma Fusão forte (Screen/Multiply/
+      // Overlay escolhida no dropdown "Fusão") — sem isto, o slider negativo só mexia na
+      // translucidez/vidro e ficava sem efeito nenhum sempre que a Fusão não fosse "Normal".
+      // Renderiza-se a peça duas vezes sobre o mesmo fundo (com a Fusão escolhida e com Normal)
+      // e mistura-se as duas consoante ovNeg — a 100% negativo fica 100% Normal/opaca.
+      const bgSnap=document.createElement('canvas');bgSnap.width=w;bgSnap.height=h;
+      bgSnap.getContext('2d').drawImage(ctx2.canvas,0,0);
+      const renderWith=(blendMode)=>{
+        const c=document.createElement('canvas');c.width=w;c.height=h;const cx3=c.getContext('2d');
+        cx3.drawImage(bgSnap,0,0);
+        cx3.globalAlpha=pieceAlpha;cx3.globalCompositeOperation=blendMode;
+        if(vividFilter)cx3.filter=vividFilter;
+        cx3.drawImage(layer,0,0);cx3.filter='none';
+        return c;
+      };
+      const withBlend=renderWith(MK.blend), withNormal=renderWith('source-over');
+      ctx2.globalAlpha=1;ctx2.globalCompositeOperation='source-over';ctx2.drawImage(withBlend,0,0);
+      ctx2.globalAlpha=ovNeg;ctx2.drawImage(withNormal,0,0);ctx2.globalAlpha=1;
+    }else{
+      ctx2.globalAlpha=pieceAlpha; ctx2.globalCompositeOperation=MK.blend;
+      if(vividFilter)ctx2.filter=vividFilter;
+      ctx2.drawImage(layer,0,0); ctx2.filter='none';
+      ctx2.globalAlpha=1; ctx2.globalCompositeOperation='source-over';
+    }
     // 3.05) passagem extra em 'screen' — soma o brilho da peça sobre a parede/luzes já visíveis
     // por baixo, dando o efeito de "luz projetada" do overlay em vez de painel opaco colado.
     if(ovMix>0){
