@@ -2278,6 +2278,16 @@ function applyDesignOpacity(targetCtx,w,h){
 }
 
 // ═══ RENDER ══════════════════════════════════════════════════════════════════
+// Assinatura barata (JSON.stringify de um único objecto — não confundir com serializar TODAS
+// as camadas) das propriedades de uma camada que afectam o seu PRÓPRIO bitmap desenhado.
+// Exclui: refs não serializáveis/pesadas (_img,_mask,_paintCanvas,_cacheOff/Key/Sig,warpData —
+// este tem o seu próprio _warpVersion, ver applyBrush/bakeWarp) e propriedades que só afectam
+// a COMPOSIÇÃO na PASS 3 (opacity/blend/clipBelow/visible/locked/collapsed/name), que por isso
+// não precisam de invalidar o desenho da própria camada.
+function layerSig(L){
+  const{_img,_mask,_paintCanvas,_cacheOff,_cacheKey,_cacheSig,_warpVersion,warpData,opacity,blend,clipBelow,visible,locked,collapsed,name,...rest}=L;
+  return JSON.stringify(rest)+'|w'+(L._warpVersion||0)+'|i'+(L._img?1:0)+'|m'+(L._mask?1:0);
+}
 // Coalesce multiple render() calls per frame into one (huge perf win quando se arrasta sliders)
 let _renderRAF=null,_hqTimer=null;
 function render(){
@@ -2308,22 +2318,22 @@ function _renderActual(hq){
   });
 
   // PASS 1: build all offscreens
-  // PERFORMANCE: com muitas camadas, redesenhar TODAS do zero em cada frame (inclui as que
-  // nem estás a editar) é o que torna o software lento ao adicionares mais camadas/efeitos —
-  // o custo de render cresce com o nº total de camadas em vez de só com a que estás a mexer.
-  // Correção: na passagem RÁPIDA (interativa, hq=false), reaproveita o bitmap já calculado
-  // da camada activa da última vez para todas as camadas que NÃO és tu a editar agora — a
-  // passagem HQ (200ms depois de parares de mexer) recalcula sempre tudo do zero, por isso
-  // qualquer imprecisão temporária corrige-se sozinha em breve. Nunca se reaproveita a
-  // camada activa, nem uma que sirva de alvo de deslocamento (o alvo é mutado in-place pela
-  // PASS 2 — reutilizar um bitmap já deslocado acumularia o deslocamento a cada frame).
+  // PERFORMANCE: redesenhar TODAS as camadas do zero em cada frame (mesmo as que não estás a
+  // tocar, e mesmo quando a alteração nem afeta o desenho — ex. Opacidade/Fusão são só de
+  // composição) é o que torna o software lento ao adicionares mais camadas/efeitos. Cada
+  // camada guarda uma "assinatura" das suas próprias propriedades; só se recalcula o bitmap
+  // quando essa assinatura muda (ou é alvo de deslocamento — ver PASS 2). warpData é um
+  // Float32Array mutado in-place (pincel/malha), por isso usa-se um contador dedicado
+  // (_warpVersion) em vez de o incluir na assinatura. A passagem HQ (200ms após parares)
+  // ignora sempre a cache, garantindo que qualquer imprecisão se corrige em breve.
   const dispTargetIds=new Set();
   visible.forEach(L=>{if(L.displaceEnabled&&L.displaceTargets&&L.displaceTargets.length)L.displaceTargets.forEach(tid=>dispTargetIds.add(tid));});
   const cacheKey=cw+'x'+ch;
   const offs=visible.map(L=>{
-    const canReuse=!hq&&L.id!==activeId&&L._cacheOff&&L._cacheKey===cacheKey&&!dispTargetIds.has(L.id);
+    const sig=layerSig(L);
+    const canReuse=!hq&&L._cacheOff&&L._cacheKey===cacheKey&&L._cacheSig===sig&&!dispTargetIds.has(L.id);
     const off=canReuse?L._cacheOff:drawLayerToCanvas(L,cw,ch);
-    if(!canReuse){L._cacheOff=off;L._cacheKey=cacheKey;}
+    if(!canReuse){L._cacheOff=off;L._cacheKey=cacheKey;L._cacheSig=sig;}
     return{L,off};
   });
 
@@ -3746,6 +3756,7 @@ function bakeWarp(L,n,cw,ch){
   // para encontrar (u,v), e depois a posição ORIGINAL via bilinear das ox/oy.
   // wd[output_idx] = output_pos - orig_pos. applyWarp faz source = output - wd = orig. ✓
   const wd=getWarp(L);wd.fill(0);
+  L._warpVersion=(L._warpVersion||0)+1; // warpData mutado in-place — ver comentário em applyBrush
   const W=(ax,ay,bx,by)=>ax*by-ay*bx; // wedge 2D
   for(let r=0;r<n;r++)for(let c=0;c<n;c++){
     const TL=L.meshPts[r*(n+1)+c];
@@ -3853,9 +3864,10 @@ function applyBrush(cx,cy,vx,vy){
     else if(brushMode==='contract'){wd[idx]-=dx*fw*.015;wd[idx+1]-=dy*fw*.015;}
     else if(brushMode==='smooth'&&x>0&&x<cw-1&&y>0&&y<ch-1){const n2=(y*cw+x-1)*2,s2=(y*cw+x+1)*2,w2=((y-1)*cw+x)*2,e2=((y+1)*cw+x)*2;wd[idx]=wd[idx]*.5+(wd[n2]+wd[s2]+wd[w2]+wd[e2])*.125;wd[idx+1]=wd[idx+1]*.5+(wd[n2+1]+wd[s2+1]+wd[w2+1]+wd[e2+1])*.125;}
   }
+  L._warpVersion=(L._warpVersion||0)+1; // warpData é mutado in-place (Float32Array) — não dá para detectar a alteração por assinatura JSON, por isso usa-se este contador dedicado para invalidar o cache de render da camada
   render();
 }
-function clearWarp(){const L=layers.find(l=>l.id===activeId);if(!L)return;saveUndo();if(L.warpData)L.warpData.fill(0);render();}
+function clearWarp(){const L=layers.find(l=>l.id===activeId);if(!L)return;saveUndo();if(L.warpData)L.warpData.fill(0);L._warpVersion=(L._warpVersion||0)+1;render();}
 function setDM(m){
   dMode=m;el('meshBtn').classList.toggle('hi',m==='mesh');el('brushBtn').classList.toggle('hi',m==='brush');
   el('dOffBtn').style.display=m!=='off'?'inline-flex':'none';el('dBar').classList.toggle('on',m!=='off');
